@@ -14,6 +14,16 @@ interface User {
   submitted: number[] | null;
 }
 
+interface GithubPullRequest {
+  __typename: string;
+  title: string;
+}
+
+interface GithubProfile {
+  __typename: string;
+  username: string;
+}
+
 export function materializeItem(fetchPort: MessagePort, itemId: number): Item | null {
   const sync = SyncContext.makeDefault();
 
@@ -55,10 +65,9 @@ export function materializeItem(fetchPort: MessagePort, itemId: number): Item | 
   return item;
 }
 
-export function materializeUser(fetchPort: MessagePort, username: string): User | null {
+function _fetch(fetchPort: MessagePort, url: string): any | null {
   const sync = SyncContext.makeDefault();
 
-  const url = `https://hacker-news.firebaseio.com/v0/user/${username}.json`;
   const fetchOptions = {
     method: 'GET',
   };
@@ -73,11 +82,61 @@ export function materializeUser(fetchPort: MessagePort, username: string): User 
   const result = new TextDecoder().decode(sync.receive());
   const user = JSON.parse(result);
 
+  return user;
+}
+
+export function materializeUser(fetchPort: MessagePort, username: string): User | null {
+  const user = _fetch(fetchPort, `https://hacker-news.firebaseio.com/v0/user/${username}.json`);
+
   if (user) {
     user.__typename = 'User';
   }
 
   return user;
+}
+
+export function materializeGithubPullRequest(
+  fetchPort: MessagePort,
+  owner: string,
+  repo: string,
+  number: string
+): GithubPullRequest | null {
+  const pr = _fetch(fetchPort, `https://api.github.com/repos/${owner}/${repo}/pulls/${number}`);
+
+  if (pr) {
+    pr.__typename = 'GithubPullRequest';
+  }
+
+  return pr;
+}
+
+export function materializeGithubAccount(
+  fetchPort: MessagePort,
+  username: string
+): GithubProfile | null {
+  const account = _fetch(fetchPort, `https://api.github.com/users/${username}`);
+
+  if (account) {
+    if (account.type !== 'User' && account.type !== 'Organization')
+      throw new Error(`Unexpected GitHub organization type: ${account.type}`);
+    account.__typename = `Github${account.type}`;
+  }
+
+  return account;
+}
+
+export function materializeGithubRepository(
+  fetchPort: MessagePort,
+  owner: string,
+  title: string
+): GithubProfile | null {
+  const repo = _fetch(fetchPort, `https://api.github.com/repos/${owner}/${title}`);
+
+  if (repo) {
+    repo.__typename = `GithubRepository`;
+  }
+
+  return repo;
 }
 
 function* yieldMaterializedItems(fetchPort: MessagePort, itemIds: number[]): Generator<Item> {

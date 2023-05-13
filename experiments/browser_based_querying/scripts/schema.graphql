@@ -404,9 +404,6 @@ type User implements Webpage {
   link: [Webpage!]
 }
 
-"""
-A singular user on github that can have their own repositories, not an organization.
-"""
 type GithubUser implements GithubAccount & Webpage {
   """
   The username of the GitHub account
@@ -419,9 +416,6 @@ type GithubUser implements GithubAccount & Webpage {
   url: String!
 }
 
-"""
-An organization on github, can have their own repositories and many members.
-"""
 type GithubOrganization implements GithubAccount & Webpage {
   """
   The username of the GitHub account
@@ -467,26 +461,6 @@ type GithubPullRequest implements Webpage {
   The body of the pull request.
   """
   body: String
-
-  """
-  The URL of the pull request on GitHub.
-  """
-  url: String!
-}
-
-"""
-A GitHub repository.
-"""
-type GithubRepository implements Webpage {
-  """
-  The title of the repository.
-  """
-  title: String!
-
-  """
-  The owner of the repository.
-  """
-  owner: GithubAccount!
 
   """
   The URL of the pull request on GitHub.

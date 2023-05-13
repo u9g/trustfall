@@ -1,0 +1,2 @@
+import * as t from '../index'
+export type RootSchemaQuery = { FrontPage: t.Item, Top: t.Item, Latest: t.Story, Best: t.Story, AskHN: t.Story, ShowHN: t.Story, RecentJob: t.Story, User: t.User | null, Item: t.Item | null, UpdatedItem: t.Item, UpdatedUserProfile: t.User, SearchByRelevance: t.Item | null, SearchByDate: t.Item | null }

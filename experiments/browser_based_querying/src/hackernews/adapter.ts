@@ -10,7 +10,7 @@ import {
   initialize,
   executeQuery,
 } from '../../www2/trustfall_wasm';
-import debug from "../utils/debug";
+import debug from '../utils/debug';
 import {
   getAskStories,
   getBestItems,
@@ -22,6 +22,9 @@ import {
   getTopItems,
   getUpdatedItems,
   getUpdatedUserProfiles,
+  materializeGithubAccount,
+  materializeGithubPullRequest,
+  materializeGithubRepository,
   materializeItem,
   materializeUser,
 } from './utils';
@@ -29,7 +32,9 @@ import HN_SCHEMA from './schema.graphql';
 
 initialize(); // Trustfall query system init.
 
+console.log('loading schema');
 const SCHEMA = Schema.parse(HN_SCHEMA);
+console.log('schema loaded');
 debug('Schema loaded.');
 
 postMessage('ready');
@@ -70,26 +75,35 @@ function* limitIterator<T>(iter: IterableIterator<T>, limit: number): IterableIt
 const _itemPattern = /^https:\/\/news\.ycombinator\.com\/item\?id=(\d+)$/;
 const _userPattern = /^https:\/\/news\.ycombinator\.com\/user\?id=(.+)$/;
 
+// github-username-regex (CC Zero v1) - /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i
+const _githubPullRequestPattern =
+  /^https:\/\/github\.com\/([a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38})\/(.+)\/pull\/(\d+)$/;
+const _githubAccountPattern = /^https:\/\/github\.com\/([a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38})$/;
+const _githubRepoPattern = /^https:\/\/github\.com\/([a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38})\/(.+)$/;
+
 function materializeWebsite(fetchPort: MessagePort, url: string): Vertex | null {
-  const itemMatch = url.match(_itemPattern);
-  let ret: any
-  if (itemMatch) {
+  let matcher: RegExpMatchArray | null = null;
+  let ret: any;
+  if ((matcher = url.match(_itemPattern))) {
     // This is an item.
-    ret = materializeItem(fetchPort, parseInt(itemMatch[1]));
+    ret = materializeItem(fetchPort, parseInt(matcher[1]));
+  } else if ((matcher = url.match(_userPattern))) {
+    // This is a user.
+    ret = materializeUser(fetchPort, matcher[1]);
+  } else if ((matcher = url.match(_githubPullRequestPattern))) {
+    // This is a github pull request.
+    ret = materializeGithubPullRequest(fetchPort, matcher[1], matcher[2], matcher[3]);
+  } else if ((matcher = url.match(_githubAccountPattern))) {
+    // This is a github profile.
+    ret = materializeGithubAccount(fetchPort, matcher[1]);
+  } else if ((matcher = url.match(_githubRepoPattern))) {
+    // This is a github repository.
+    ret = materializeGithubRepository(fetchPort, matcher[1], matcher[2]);
   } else {
-    const userMatch = url.match(_userPattern);
-    if (userMatch) {
-      // This is a user.
-      ret = materializeUser(fetchPort, userMatch[1]);
-    } else {
-      // This is some other type of webpage that we don't have a more specific type for.
-      ret = {
-        __typename: 'Website'
-      };
-    }
+    ret = { __typename: 'Website' };
   }
-  ret.url = url
-  return ret
+  ret.url = url;
+  return ret;
 }
 
 function* linksInHnMarkup(fetchPort: MessagePort, hnText: string | null): IterableIterator<Vertex> {
@@ -230,7 +244,7 @@ export class MyAdapter implements Adapter<Vertex> {
           break;
         }
       }
-      yield * resolvePossiblyLimitedIterator(fetcher(this.fetchPort), limit);
+      yield* resolvePossiblyLimitedIterator(fetcher(this.fetchPort), limit);
     } else if (edge === 'User') {
       const username = parameters['name'] as string;
       const user = materializeUser(this.fetchPort, username);
@@ -265,6 +279,7 @@ export class MyAdapter implements Adapter<Vertex> {
     type_name: string,
     field_name: string
   ): IterableIterator<ContextAndValue> {
+    console.log({ type_name, field_name });
     if (field_name === '__typename') {
       for (const ctx of contexts) {
         yield {
@@ -395,6 +410,42 @@ export class MyAdapter implements Adapter<Vertex> {
       } else {
         throw new Error(`Unexpected property: ${type_name} ${field_name}`);
       }
+    } else if (type_name === 'GithubPullRequest') {
+      let fetcher: (obj: any) => any = () => null;
+      if (field_name === 'title') {
+        fetcher = (obj: any) => obj.title;
+      } else if (field_name === 'url') {
+        fetcher = (obj: any) => obj.url;
+      } else if (field_name === 'body') {
+        fetcher = (obj: any) => obj.body;
+      }
+
+      for (const ctx of contexts) {
+        const vertex = ctx.activeVertex;
+        yield {
+          localId: ctx.localId,
+          value: fetcher(vertex) || null,
+        };
+      }
+    } else if (type_name === 'GithubAccount') {
+      for (const ctx of contexts) {
+        const vertex = ctx.activeVertex;
+        yield {
+          localId: ctx.localId,
+          value: vertex.login || null,
+        };
+      }
+    } else if (type_name === 'GithubRepository') {
+      if (field_name === 'title') {
+        for (const ctx of contexts) {
+          const vertex = ctx.activeVertex;
+          console.log({ GithubRepository: vertex });
+          yield {
+            localId: ctx.localId,
+            value: vertex.name || null,
+          };
+        }
+      }
     } else {
       throw new Error(`Unexpected type+property for type ${type_name}: ${field_name}`);
     }
@@ -406,11 +457,7 @@ export class MyAdapter implements Adapter<Vertex> {
     edge_name: string,
     parameters: JsEdgeParameters
   ): IterableIterator<ContextAndNeighborsIterator<Vertex>> {
-    if (
-      type_name === 'Story' ||
-      type_name === 'Job' ||
-      type_name === 'Comment'
-    ) {
+    if (type_name === 'Story' || type_name === 'Job' || type_name === 'Comment') {
       if (edge_name === 'link') {
         if (type_name === 'Story') {
           // Link submission stories have the submitted URL as a link.
@@ -474,18 +521,20 @@ export class MyAdapter implements Adapter<Vertex> {
           throw new Error(`Not implemented: ${type_name} ${edge_name} ${parameters}`);
         }
       } else if (edge_name === 'byUser') {
-        for (const ctx of contexts) {
-          const vertex = ctx.activeVertex;
-          if (vertex) {
-            yield {
-              localId: ctx.localId,
-              neighbors: lazyFetchMap(this.fetchPort, [vertex.by], materializeUser),
-            };
-          } else {
-            yield {
-              localId: ctx.localId,
-              neighbors: [][Symbol.iterator](),
-            };
+        if (type_name === 'Story' || type_name === 'Comment') {
+          for (const ctx of contexts) {
+            const vertex = ctx.activeVertex;
+            if (vertex) {
+              yield {
+                localId: ctx.localId,
+                neighbors: lazyFetchMap(this.fetchPort, [vertex.by], materializeUser),
+              };
+            } else {
+              yield {
+                localId: ctx.localId,
+                neighbors: [][Symbol.iterator](),
+              };
+            }
           }
         }
       } else if (edge_name === 'comment' || edge_name === 'reply') {
@@ -540,6 +589,49 @@ export class MyAdapter implements Adapter<Vertex> {
         }
       } else {
         throw new Error(`Not implemented: ${type_name} ${edge_name} ${parameters}`);
+      }
+    } else if (type_name === 'GithubPullRequest') {
+      // console.log({type_name, edge_name})
+      if (edge_name === 'creator') {
+        for (const ctx of contexts) {
+          const vertex = ctx.activeVertex;
+          if (vertex) {
+            yield {
+              localId: ctx.localId,
+              neighbors: lazyFetchMap(
+                this.fetchPort,
+                [vertex.user.login],
+                materializeGithubAccount
+              ),
+            };
+          } else {
+            yield {
+              localId: ctx.localId,
+              neighbors: [][Symbol.iterator](),
+            };
+          }
+        }
+      }
+    } else if (type_name === 'GithubRepository') {
+      if (edge_name === 'owner') {
+        for (const ctx of contexts) {
+          const vertex = ctx.activeVertex;
+          if (vertex) {
+            yield {
+              localId: ctx.localId,
+              neighbors: lazyFetchMap(
+                this.fetchPort,
+                [vertex.owner.login],
+                materializeGithubAccount
+              ),
+            };
+          } else {
+            yield {
+              localId: ctx.localId,
+              neighbors: [][Symbol.iterator](),
+            };
+          }
+        }
       }
     } else {
       throw new Error(`Not implemented: ${type_name} ${edge_name} ${parameters}`);

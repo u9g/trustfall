@@ -1,0 +1,2 @@
+import * as t from '../index'
+export type Story = { id: number, unixTime: number, url: string, byUsername: string, score: number, textHtml: string | null, textPlain: string | null, title: string, submittedUrl: string | null, byUser: t.User, comment: t.Comment | null, link: t.Webpage | null } & ( t.Item | t.Webpage )
