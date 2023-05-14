@@ -30,6 +30,7 @@ import {
 } from './utils';
 import HN_SCHEMA from './schema.graphql';
 import { Webpage } from './data/Webpage';
+import * as sources from './data/sources';
 
 initialize(); // Trustfall query system init.
 
@@ -105,87 +106,19 @@ export class MyAdapter implements Adapter<Vertex> {
   }
 
   *resolveStartingVertices(edge: string, parameters: JsEdgeParameters): IterableIterator<Vertex> {
-    if (edge === 'FrontPage') {
-      return limitIterator(getTopItems(this.fetchPort), 30);
-    } else if (
-      edge === 'Top' ||
-      edge === 'Latest' ||
-      edge === 'Best' ||
-      edge === 'AskHN' ||
-      edge === 'ShowHN' ||
-      edge === 'RecentJob' ||
-      edge === 'UpdatedItem' ||
-      edge === 'UpdatedUserProfile'
-    ) {
-      const limit = parameters['max'] as number | undefined;
-      let fetcher: (fetchPort: MessagePort) => IterableIterator<Vertex>;
-      switch (edge) {
-        case 'Top': {
-          fetcher = getTopItems;
-          break;
-        }
-        case 'Latest': {
-          fetcher = getLatestItems;
-          break;
-        }
-        case 'Best': {
-          fetcher = getBestItems;
-          break;
-        }
-        case 'AskHN': {
-          fetcher = getAskStories;
-          break;
-        }
-        case 'ShowHN': {
-          fetcher = getShowStories;
-          break;
-        }
-        case 'RecentJob': {
-          fetcher = getJobItems;
-          break;
-        }
-        case 'UpdatedItem': {
-          fetcher = getUpdatedItems;
-          break;
-        }
-        case 'UpdatedUserProfile': {
-          fetcher = getUpdatedUserProfiles;
-          break;
-        }
-      }
-      yield* resolvePossiblyLimitedIterator(fetcher(this.fetchPort), limit);
-    } else if (edge === 'User') {
-      const username = parameters['name'] as string;
-      const user = materializeUser(username);
-      if (user != null) {
-        yield user;
-      }
-    } else if (edge === 'Item') {
-      const id = parameters['id'] as number;
-      const item = materializeItem(id);
-      if (item != null) {
-        yield item;
-      }
-    } else if (edge === 'SearchByRelevance' || edge === 'SearchByDate') {
-      const query = parameters['query'] as string;
-      switch (edge) {
-        case 'SearchByRelevance': {
-          yield* getRelevanceSearchResults(query);
-          break;
-        }
-        case 'SearchByDate': {
-          yield* getDateSearchResults(query);
-          break;
-        }
-      }
-    } else {
-      throw new Error(`Unexpected edge ${edge} with params ${parameters}`);
+    try {
+      const source = (sources as any)[edge];
+      if (!source) throw new Error(`sources[${edge}] doesn't exist`);
+      yield* source(parameters);
+    } catch (e) {
+      console.trace({ edge, parameters });
+      throw e;
     }
   }
 
   *resolveProperty(
     contexts: IterableIterator<JsContext<Vertex>>,
-    _type_name: string,
+    type_name: string,
     field_name: string
   ): IterableIterator<ContextAndValue> {
     for (const ctx of contexts) {
@@ -193,17 +126,22 @@ export class MyAdapter implements Adapter<Vertex> {
       if (!(field_name in vertex)) {
         throw new Error(`[User] Can't call vertex.${field_name}() on "${JSON.stringify(vertex)}"`);
       }
-      yield {
-        localId: ctx.localId,
-        value: vertex[field_name]?.() || null,
-      };
+      try {
+        yield {
+          localId: ctx.localId,
+          value: vertex[field_name]?.() || null,
+        };
+      } catch (e) {
+        console.trace({ type_name, field_name, vertex });
+        throw e;
+      }
     }
   }
 
   *resolveNeighbors(
     contexts: IterableIterator<JsContext<Vertex>>,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _type_name: string,
+    type_name: string,
     edge_name: string,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _parameters: JsEdgeParameters
@@ -215,24 +153,34 @@ export class MyAdapter implements Adapter<Vertex> {
           `[Neighbors] Can't call vertex.${edge_name}() on "${JSON.stringify(vertex)}"`
         );
       }
-      yield {
-        localId: ctx.localId,
-        neighbors: vertex[edge_name]?.() || null,
-      };
+      try {
+        yield {
+          localId: ctx.localId,
+          neighbors: vertex[edge_name]?.() || null,
+        };
+      } catch (e) {
+        console.trace({ vertex, edge_name, type_name });
+        throw e;
+      }
     }
   }
 
   *resolveCoercion(
     contexts: IterableIterator<JsContext<Vertex>>,
-    _type_name: string,
+    type_name: string,
     coerce_to_type: string
   ): IterableIterator<ContextAndBool> {
     for (const ctx of contexts) {
       const vertex = ctx.activeVertex;
-      yield {
-        localId: ctx.localId,
-        value: vertex?.__typename?.() === coerce_to_type,
-      };
+      try {
+        yield {
+          localId: ctx.localId,
+          value: vertex?.__typename?.() === coerce_to_type,
+        };
+      } catch (e) {
+        console.trace({ vertex, coerce_to_type, type_name });
+        throw e;
+      }
     }
   }
 }

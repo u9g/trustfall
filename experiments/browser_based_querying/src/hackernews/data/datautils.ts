@@ -2,6 +2,8 @@ import { SyncContext } from '../../sync';
 import { decode } from 'html-entities';
 import { materializeWebsite } from '../adapter';
 import { Webpage } from './Webpage';
+import { Item } from './Item';
+import { materializeItem } from '../utils';
 
 declare const fetchPort: MessagePort;
 
@@ -84,6 +86,67 @@ export function* linksInHnMarkup(hnText: string | null): Generator<Webpage> {
       if (vertex) {
         yield vertex;
       }
+    }
+  }
+}
+
+export function* resolveListOf<T>(url: string, materializer: (id: any) => T): Generator<T> {
+  const itemIds: number[] = syncFetch(url);
+
+  for (const id of itemIds) {
+    const item = materializer(id);
+    if (item !== null) yield item;
+
+    // Ignore polls. They are very rarely made on HackerNews,
+    // and they are not supported in our query schema.
+    // U9G: We just default to Item for those
+
+    // if (itemType === 'story' || itemType === 'job') {
+    //   yield item as Item;
+    // }
+  }
+}
+
+function* limitIterator<T>(iter: IterableIterator<T>, limit: number): IterableIterator<T> {
+  let count = 0;
+  for (const item of iter) {
+    yield item;
+    count += 1;
+    if (count == limit) {
+      break;
+    }
+  }
+}
+
+export function* limitedListIterator<T>(
+  url: string,
+  limit: number | undefined,
+  materializer: (id: any) => T
+): IterableIterator<any> {
+  const iter = resolveListOf(url, materializer);
+
+  if (limit != null) {
+    yield* limitIterator(iter, limit);
+  } else {
+    yield* iter;
+  }
+}
+
+export function* hackernewsAlgoliaSearch(endpoint: string, query: string) {
+  let page = 0;
+  while (true) {
+    const params = new URLSearchParams({
+      query: query,
+      page: (page++).toString(),
+      hitsPerPage: '50',
+    }).toString();
+
+    const { hits } = syncFetch(`https://hn.algolia.com/api/v1/${endpoint}?${params}`);
+    if (!hits?.length) return;
+
+    for (const { objectID: itemId } of hits) {
+      const item = materializeItem(itemId);
+      if (item !== null) yield item;
     }
   }
 }
