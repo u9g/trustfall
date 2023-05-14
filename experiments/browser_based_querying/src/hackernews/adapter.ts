@@ -29,6 +29,7 @@ import {
   materializeUser,
 } from './utils';
 import HN_SCHEMA from './schema.graphql';
+import { Webpage } from './data/Webpage';
 
 initialize(); // Trustfall query system init.
 
@@ -38,28 +39,6 @@ console.log('schema loaded');
 debug('Schema loaded.');
 
 postMessage('ready');
-
-type Vertex = any;
-
-const HNItemFieldMappings: Record<string, string> = {
-  __typename: '__typename',
-  id: 'id',
-  unixTime: 'time',
-  title: 'title',
-  score: 'score',
-  submittedUrl: 'url',
-  byUsername: 'by',
-  textHtml: 'text',
-  // commentsCount: 'descendants',
-};
-
-const HNUserFieldMappings: Record<string, string> = {
-  __typename: '__typename',
-  id: 'id',
-  karma: 'karma',
-  aboutHtml: 'about',
-  unixCreatedAt: 'created',
-};
 
 function* limitIterator<T>(iter: IterableIterator<T>, limit: number): IterableIterator<T> {
   let count = 0;
@@ -72,6 +51,8 @@ function* limitIterator<T>(iter: IterableIterator<T>, limit: number): IterableIt
   }
 }
 
+type Vertex = any;
+
 const _itemPattern = /^https:\/\/news\.ycombinator\.com\/item\?id=(\d+)$/;
 const _userPattern = /^https:\/\/news\.ycombinator\.com\/user\?id=(.+)$/;
 
@@ -81,100 +62,28 @@ const _githubPullRequestPattern =
 const _githubAccountPattern = /^https:\/\/github\.com\/([a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38})$/;
 const _githubRepoPattern = /^https:\/\/github\.com\/([a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38})\/(.+)$/;
 
-function materializeWebsite(fetchPort: MessagePort, url: string): Vertex | null {
+export function materializeWebsite(url: string): Vertex | null {
   let matcher: RegExpMatchArray | null = null;
   let ret: any;
   if ((matcher = url.match(_itemPattern))) {
     // This is an item.
-    ret = materializeItem(fetchPort, parseInt(matcher[1]));
+    ret = materializeItem(parseInt(matcher[1]));
   } else if ((matcher = url.match(_userPattern))) {
     // This is a user.
-    ret = materializeUser(fetchPort, matcher[1]);
+    ret = materializeUser(matcher[1]);
   } else if ((matcher = url.match(_githubPullRequestPattern))) {
     // This is a github pull request.
-    ret = materializeGithubPullRequest(fetchPort, matcher[1], matcher[2], matcher[3]);
+    ret = materializeGithubPullRequest(matcher[1], matcher[2], matcher[3]);
   } else if ((matcher = url.match(_githubAccountPattern))) {
     // This is a github profile.
-    ret = materializeGithubAccount(fetchPort, matcher[1]);
+    ret = materializeGithubAccount(matcher[1]);
   } else if ((matcher = url.match(_githubRepoPattern))) {
     // This is a github repository.
-    ret = materializeGithubRepository(fetchPort, matcher[1], matcher[2]);
+    ret = materializeGithubRepository(matcher[1], matcher[2]);
   } else {
-    ret = { __typename: 'Website' };
+    ret = new Webpage(url);
   }
-  ret.url = url;
   return ret;
-}
-
-function* linksInHnMarkup(fetchPort: MessagePort, hnText: string | null): IterableIterator<Vertex> {
-  if (hnText) {
-    const matches = hnText.matchAll(/<a [^>]*href="([^"]+)"[^>]*>/g);
-    for (const match of matches) {
-      // We matched the HTML-escaped URL. Decode the HTML entities.
-      const url = decode(match[1]);
-      const vertex = materializeWebsite(fetchPort, url);
-      if (vertex) {
-        yield vertex;
-      }
-    }
-  }
-}
-
-function* linksInAboutPage(
-  fetchPort: MessagePort,
-  aboutHtml: string | null
-): IterableIterator<Vertex> {
-  if (aboutHtml) {
-    const processedLinks: Record<string, boolean> = {};
-
-    const matches1 = aboutHtml.matchAll(/<a [^>]*href="([^"]+)"[^>]*>/g);
-    for (const match of matches1) {
-      // We matched the HTML-escaped URL. Decode the HTML entities.
-      const url = decode(match[1]);
-
-      if (!processedLinks[url]) {
-        processedLinks[url] = true;
-        const vertex = materializeWebsite(fetchPort, url);
-        if (vertex) {
-          yield vertex;
-        }
-      }
-    }
-
-    const aboutPlain = extractPlainTextFromHnMarkup(aboutHtml);
-    const matches2 = aboutPlain.matchAll(/http[s]?:\/\/[^ \n\t]*[^ \n\t\.);,\]}]/g);
-    for (const match of matches2) {
-      // We matched the unescaped URL.
-      const url = match[0];
-
-      if (!processedLinks[url]) {
-        processedLinks[url] = true;
-        const vertex = materializeWebsite(fetchPort, url);
-        if (vertex) {
-          yield vertex;
-        }
-      }
-    }
-  }
-}
-
-function extractPlainTextFromHnMarkup(hnText: null): null;
-function extractPlainTextFromHnMarkup(hnText: string): string;
-function extractPlainTextFromHnMarkup(hnText: string | null): string | null {
-  // HN comments are not-quite-HTML: they support italics, links, paragraphs,
-  // and preformatted text (code blocks), and use HTML escape sequences.
-  // Docs: https://news.ycombinator.com/formatdoc
-  if (hnText) {
-    return decode(
-      hnText
-        .replaceAll('</a>', '') // remove closing link tags
-        .replaceAll(/<a[^>]*>/g, '') // remove opening link tags
-        .replaceAll(/<\/?(?:i|pre|code)>/g, '') // remove formatting tags
-        .replaceAll('<p>', '\n') // turn paragraph tags into newlines
-    );
-  } else {
-    return null;
-  }
 }
 
 function* resolvePossiblyLimitedIterator(
@@ -247,13 +156,13 @@ export class MyAdapter implements Adapter<Vertex> {
       yield* resolvePossiblyLimitedIterator(fetcher(this.fetchPort), limit);
     } else if (edge === 'User') {
       const username = parameters['name'] as string;
-      const user = materializeUser(this.fetchPort, username);
+      const user = materializeUser(username);
       if (user != null) {
         yield user;
       }
     } else if (edge === 'Item') {
       const id = parameters['id'] as number;
-      const item = materializeItem(this.fetchPort, id);
+      const item = materializeItem(id);
       if (item != null) {
         yield item;
       }
@@ -261,11 +170,11 @@ export class MyAdapter implements Adapter<Vertex> {
       const query = parameters['query'] as string;
       switch (edge) {
         case 'SearchByRelevance': {
-          yield* getRelevanceSearchResults(this.fetchPort, query);
+          yield* getRelevanceSearchResults(query);
           break;
         }
         case 'SearchByDate': {
-          yield* getDateSearchResults(this.fetchPort, query);
+          yield* getDateSearchResults(query);
           break;
         }
       }
@@ -276,410 +185,54 @@ export class MyAdapter implements Adapter<Vertex> {
 
   *resolveProperty(
     contexts: IterableIterator<JsContext<Vertex>>,
-    type_name: string,
+    _type_name: string,
     field_name: string
   ): IterableIterator<ContextAndValue> {
-    console.log({ type_name, field_name });
-    if (field_name === '__typename') {
-      for (const ctx of contexts) {
-        yield {
-          localId: ctx.localId,
-          value: ctx.activeVertex?.__typename || null,
-        };
+    for (const ctx of contexts) {
+      const vertex = ctx.activeVertex;
+      if (!(field_name in vertex)) {
+        throw new Error(`[User] Can't call vertex.${field_name}() on "${JSON.stringify(vertex)}"`);
       }
-      return;
-    }
-
-    if (
-      type_name === 'Item' ||
-      type_name === 'Story' ||
-      type_name === 'Job' ||
-      type_name === 'Comment'
-    ) {
-      switch (field_name) {
-        case 'url': {
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-
-            let value = null;
-            if (vertex) {
-              value = `https://news.ycombinator.com/item?id=${vertex.id}`;
-            }
-
-            yield {
-              localId: ctx.localId,
-              value: value,
-            };
-          }
-          break;
-        }
-        case 'textPlain': {
-          const fieldKey = HNItemFieldMappings.textHtml;
-
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-
-            let value = null;
-            if (vertex) {
-              value = extractPlainTextFromHnMarkup(vertex[fieldKey]);
-            }
-
-            yield {
-              localId: ctx.localId,
-              value: value,
-            };
-          }
-          break;
-        }
-        default: {
-          const fieldKey = HNItemFieldMappings[field_name];
-          if (fieldKey == undefined) {
-            throw new Error(`Unexpected property for type ${type_name}: ${field_name}`);
-          }
-
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-
-            yield {
-              localId: ctx.localId,
-              value: vertex?.[fieldKey] || null,
-            };
-          }
-        }
-      }
-    } else if (type_name === 'User') {
-      switch (field_name) {
-        case 'url': {
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-
-            let value = null;
-            if (vertex) {
-              value = `https://news.ycombinator.com/user?id=${vertex.id}`;
-            }
-
-            yield {
-              localId: ctx.localId,
-              value: value,
-            };
-          }
-          break;
-        }
-        case 'aboutPlain': {
-          const fieldKey = HNUserFieldMappings.aboutHtml;
-
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-
-            let value = null;
-            if (vertex) {
-              value = extractPlainTextFromHnMarkup(vertex[fieldKey]);
-            }
-
-            yield {
-              localId: ctx.localId,
-              value: value,
-            };
-          }
-          break;
-        }
-        default: {
-          const fieldKey = HNUserFieldMappings[field_name];
-          if (fieldKey == undefined) {
-            throw new Error(`Unexpected property for type ${type_name}: ${field_name}`);
-          }
-
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-            yield {
-              localId: ctx.localId,
-              value: vertex?.[fieldKey] || null,
-            };
-          }
-        }
-      }
-    } else if (type_name === 'Webpage') {
-      if (field_name === 'url') {
-        for (const ctx of contexts) {
-          const vertex = ctx.activeVertex;
-          yield {
-            localId: ctx.localId,
-            value: vertex?.url || null,
-          };
-        }
-      } else {
-        throw new Error(`Unexpected property: ${type_name} ${field_name}`);
-      }
-    } else if (type_name === 'GithubPullRequest') {
-      let fetcher: (obj: any) => any = () => null;
-      if (field_name === 'title') {
-        fetcher = (obj: any) => obj.title;
-      } else if (field_name === 'url') {
-        fetcher = (obj: any) => obj.url;
-      } else if (field_name === 'body') {
-        fetcher = (obj: any) => obj.body;
-      }
-
-      for (const ctx of contexts) {
-        const vertex = ctx.activeVertex;
-        yield {
-          localId: ctx.localId,
-          value: fetcher(vertex) || null,
-        };
-      }
-    } else if (type_name === 'GithubAccount') {
-      for (const ctx of contexts) {
-        const vertex = ctx.activeVertex;
-        yield {
-          localId: ctx.localId,
-          value: vertex.login || null,
-        };
-      }
-    } else if (type_name === 'GithubRepository') {
-      if (field_name === 'title') {
-        for (const ctx of contexts) {
-          const vertex = ctx.activeVertex;
-          console.log({ GithubRepository: vertex });
-          yield {
-            localId: ctx.localId,
-            value: vertex.name || null,
-          };
-        }
-      }
-    } else {
-      throw new Error(`Unexpected type+property for type ${type_name}: ${field_name}`);
+      yield {
+        localId: ctx.localId,
+        value: vertex[field_name]?.() || null,
+      };
     }
   }
 
   *resolveNeighbors(
     contexts: IterableIterator<JsContext<Vertex>>,
-    type_name: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _type_name: string,
     edge_name: string,
-    parameters: JsEdgeParameters
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _parameters: JsEdgeParameters
   ): IterableIterator<ContextAndNeighborsIterator<Vertex>> {
-    if (type_name === 'Story' || type_name === 'Job' || type_name === 'Comment') {
-      if (edge_name === 'link') {
-        if (type_name === 'Story') {
-          // Link submission stories have the submitted URL as a link.
-          // Text submission stories can have multiple links in the text.
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-            let neighbors: IterableIterator<Vertex>;
-            if (vertex) {
-              if (vertex.url) {
-                // link submission
-                const neighbor = materializeWebsite(this.fetchPort, vertex.url);
-                if (neighbor) {
-                  neighbors = [neighbor][Symbol.iterator]();
-                } else {
-                  neighbors = [][Symbol.iterator]();
-                }
-              } else {
-                // text submission
-                neighbors = linksInHnMarkup(this.fetchPort, vertex.text);
-              }
-            } else {
-              neighbors = [][Symbol.iterator]();
-            }
-            yield {
-              localId: ctx.localId,
-              neighbors,
-            };
-          }
-        } else if (type_name === 'Comment') {
-          // Comments can only have links in their text content.
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-            let neighbors: IterableIterator<Vertex>;
-            if (vertex) {
-              neighbors = linksInHnMarkup(this.fetchPort, vertex.text);
-            } else {
-              neighbors = [][Symbol.iterator]();
-            }
-            yield {
-              localId: ctx.localId,
-              neighbors,
-            };
-          }
-        } else if (type_name === 'Job') {
-          // Jobs only have the submitted URL as a link.
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-            let neighbors: IterableIterator<Vertex> = [][Symbol.iterator]();
-            if (vertex) {
-              const neighbor = materializeWebsite(this.fetchPort, vertex.url);
-              if (neighbor) {
-                neighbors = [neighbor][Symbol.iterator]();
-              }
-            }
-            yield {
-              localId: ctx.localId,
-              neighbors,
-            };
-          }
-        } else {
-          throw new Error(`Not implemented: ${type_name} ${edge_name} ${parameters}`);
-        }
-      } else if (edge_name === 'byUser') {
-        if (type_name === 'Story' || type_name === 'Comment') {
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-            if (vertex) {
-              yield {
-                localId: ctx.localId,
-                neighbors: lazyFetchMap(this.fetchPort, [vertex.by], materializeUser),
-              };
-            } else {
-              yield {
-                localId: ctx.localId,
-                neighbors: [][Symbol.iterator](),
-              };
-            }
-          }
-        }
-      } else if (edge_name === 'comment' || edge_name === 'reply') {
-        for (const ctx of contexts) {
-          const vertex = ctx.activeVertex;
-          yield {
-            localId: ctx.localId,
-            neighbors: lazyFetchMap(this.fetchPort, vertex?.kids, materializeItem),
-          };
-        }
-      } else if (edge_name === 'parent') {
-        for (const ctx of contexts) {
-          const vertex = ctx.activeVertex;
-          const parent = vertex?.parent;
-          if (parent) {
-            yield {
-              localId: ctx.localId,
-              neighbors: lazyFetchMap(this.fetchPort, [parent], materializeItem),
-            };
-          } else {
-            yield {
-              localId: ctx.localId,
-              neighbors: [][Symbol.iterator](),
-            };
-          }
-        }
-      } else {
-        throw new Error(`Not implemented: ${type_name} ${edge_name} ${parameters}`);
+    for (const ctx of contexts) {
+      const vertex = ctx.activeVertex;
+      if (!(edge_name in vertex)) {
+        throw new Error(
+          `[Neighbors] Can't call vertex.${edge_name}() on "${JSON.stringify(vertex)}"`
+        );
       }
-    } else if (type_name === 'User') {
-      if (edge_name === 'submitted') {
-        for (const ctx of contexts) {
-          const vertex = ctx.activeVertex;
-          const submitted = vertex?.submitted;
-          yield {
-            localId: ctx.localId,
-            neighbors: lazyFetchMap(this.fetchPort, submitted, materializeItem),
-          };
-        }
-      } else if (edge_name === 'link') {
-        for (const ctx of contexts) {
-          const vertex = ctx.activeVertex;
-          let neighbors: IterableIterator<Vertex> = [][Symbol.iterator]();
-          const aboutHtml = vertex?.about;
-          if (aboutHtml) {
-            neighbors = linksInAboutPage(this.fetchPort, aboutHtml);
-          }
-          yield {
-            localId: ctx.localId,
-            neighbors,
-          };
-        }
-      } else {
-        throw new Error(`Not implemented: ${type_name} ${edge_name} ${parameters}`);
-      }
-    } else if (type_name === 'GithubPullRequest') {
-      // console.log({type_name, edge_name})
-      if (edge_name === 'creator') {
-        for (const ctx of contexts) {
-          const vertex = ctx.activeVertex;
-          if (vertex) {
-            yield {
-              localId: ctx.localId,
-              neighbors: lazyFetchMap(
-                this.fetchPort,
-                [vertex.user.login],
-                materializeGithubAccount
-              ),
-            };
-          } else {
-            yield {
-              localId: ctx.localId,
-              neighbors: [][Symbol.iterator](),
-            };
-          }
-        }
-      }
-    } else if (type_name === 'GithubRepository') {
-      if (edge_name === 'owner') {
-        for (const ctx of contexts) {
-          const vertex = ctx.activeVertex;
-          if (vertex) {
-            yield {
-              localId: ctx.localId,
-              neighbors: lazyFetchMap(
-                this.fetchPort,
-                [vertex.owner.login],
-                materializeGithubAccount
-              ),
-            };
-          } else {
-            yield {
-              localId: ctx.localId,
-              neighbors: [][Symbol.iterator](),
-            };
-          }
-        }
-      }
-    } else {
-      throw new Error(`Not implemented: ${type_name} ${edge_name} ${parameters}`);
+      yield {
+        localId: ctx.localId,
+        neighbors: vertex[edge_name]?.() || null,
+      };
     }
   }
 
   *resolveCoercion(
     contexts: IterableIterator<JsContext<Vertex>>,
-    type_name: string,
+    _type_name: string,
     coerce_to_type: string
   ): IterableIterator<ContextAndBool> {
-    if (type_name === 'Item' || type_name === 'Webpage') {
-      if (coerce_to_type === 'Item') {
-        // The Item type is abstract, we need to check if the vertex is any of the Item subtypes.
-        for (const ctx of contexts) {
-          const vertex = ctx.activeVertex;
-          const type = vertex?.__typename;
-          yield {
-            localId: ctx.localId,
-            value: type === 'Story' || type === 'Job' || type === 'Comment',
-          };
-        }
-      } else {
-        for (const ctx of contexts) {
-          const vertex = ctx.activeVertex;
-          yield {
-            localId: ctx.localId,
-            value: vertex?.__typename === coerce_to_type,
-          };
-        }
-      }
-    } else {
-      throw new Error(`Unexpected coercion from ${type_name} to ${coerce_to_type}`);
-    }
-  }
-}
-
-function* lazyFetchMap<InT, OutT>(
-  fetchPort: MessagePort,
-  inputs: Array<InT> | null,
-  func: (port: MessagePort, arg: InT) => OutT
-): IterableIterator<OutT> {
-  if (inputs) {
-    for (const input of inputs) {
-      const result = func(fetchPort, input);
-      if (result != null) {
-        yield result;
-      }
+    for (const ctx of contexts) {
+      const vertex = ctx.activeVertex;
+      yield {
+        localId: ctx.localId,
+        value: vertex?.__typename?.() === coerce_to_type,
+      };
     }
   }
 }
@@ -730,6 +283,7 @@ function dispatch(e: MessageEvent<AdapterMessage>): void {
 
   if (payload.op === 'channel') {
     _adapterFetchChannel = payload.data.port;
+    (globalThis as any).fetchPort = payload.data.port;
     return;
   }
 

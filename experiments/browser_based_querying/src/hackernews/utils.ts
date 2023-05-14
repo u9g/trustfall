@@ -1,148 +1,68 @@
 import { SyncContext } from '../sync';
+import { Comment } from './data/Comment';
+import { GithubAccount } from './data/GithubAccount';
+import { GithubOrganization } from './data/GithubOrganization';
+import { GithubPullRequest } from './data/GithubPullRequest';
+import { GithubRepository } from './data/GithubRepository';
+import { GithubUser } from './data/GithubUser';
+import { Item } from './data/Item';
+import { Job } from './data/Job';
+import { Story } from './data/Story';
+import { User } from './data/User';
+import { syncFetch } from './data/datautils';
 
-interface Item {
-  __typename: string;
-  type: string;
-}
+export function materializeItem(itemId: number): Item | null {
+  const item = syncFetch(`https://hacker-news.firebaseio.com/v0/item/${itemId}.json`);
 
-interface User {
-  __typename: string;
-  id: string;
-  created: number;
-  karma: number;
-  about: string | null; // HTML content
-  submitted: number[] | null;
-}
-
-interface GithubPullRequest {
-  __typename: string;
-  title: string;
-}
-
-interface GithubProfile {
-  __typename: string;
-  username: string;
-}
-
-export function materializeItem(fetchPort: MessagePort, itemId: number): Item | null {
-  const sync = SyncContext.makeDefault();
-
-  const url = `https://hacker-news.firebaseio.com/v0/item/${itemId}.json`;
-  const fetchOptions = {
-    method: 'GET',
-  };
-
-  const message = {
-    sync: sync.makeSendable(),
-    input: url,
-    init: fetchOptions,
-  };
-  fetchPort.postMessage(message);
-
-  const result = new TextDecoder().decode(sync.receive());
-  const item = JSON.parse(result);
-
-  if (item) {
-    switch (item.type) {
-      case 'comment': {
-        item.__typename = 'Comment';
-        break;
-      }
-      case 'story': {
-        item.__typename = 'Story';
-        break;
-      }
-      case 'job': {
-        item.__typename = 'Job';
-        break;
-      }
-      default: {
-        item.__typename = 'Item';
-      }
-    }
+  if (item === null) {
+    return null;
   }
 
-  return item;
-}
-
-function _fetch(fetchPort: MessagePort, url: string): any | null {
-  const sync = SyncContext.makeDefault();
-
-  const fetchOptions = {
-    method: 'GET',
-  };
-
-  const message = {
-    sync: sync.makeSendable(),
-    input: url,
-    init: fetchOptions,
-  };
-  fetchPort.postMessage(message);
-
-  const result = new TextDecoder().decode(sync.receive());
-  const user = JSON.parse(result);
-
-  return user;
-}
-
-export function materializeUser(fetchPort: MessagePort, username: string): User | null {
-  const user = _fetch(fetchPort, `https://hacker-news.firebaseio.com/v0/user/${username}.json`);
-
-  if (user) {
-    user.__typename = 'User';
+  switch (item.type) {
+    case 'comment':
+      return new Comment(itemId, item);
+    case 'story':
+      return new Story(itemId, item);
+    case 'job':
+      return new Job(itemId, item);
+    default:
+      return new Item(itemId, item);
   }
+}
 
-  return user;
+export function materializeUser(username: string): User | null {
+  return User.make(username);
 }
 
 export function materializeGithubPullRequest(
-  fetchPort: MessagePort,
   owner: string,
   repo: string,
   number: string
 ): GithubPullRequest | null {
-  const pr = _fetch(fetchPort, `https://api.github.com/repos/${owner}/${repo}/pulls/${number}`);
-
-  if (pr) {
-    pr.__typename = 'GithubPullRequest';
-  }
-
-  return pr;
+  return GithubPullRequest.make(owner, repo, number);
 }
 
-export function materializeGithubAccount(
-  fetchPort: MessagePort,
-  username: string
-): GithubProfile | null {
-  const account = _fetch(fetchPort, `https://api.github.com/users/${username}`);
-
-  if (account) {
-    if (account.type !== 'User' && account.type !== 'Organization')
-      throw new Error(`Unexpected GitHub organization type: ${account.type}`);
-    account.__typename = `Github${account.type}`;
+export function materializeGithubAccount(username: string): GithubAccount | null {
+  const accountData = syncFetch(`https://api.github.com/users/${username}`);
+  if (accountData === null) return null;
+  switch (accountData.type) {
+    case 'User':
+      return new GithubUser(username, accountData);
+    case 'Organization':
+      return new GithubOrganization(username, accountData);
+    default:
+      throw new Error(`Unexpected github account type: ${accountData.type}`);
   }
-
-  return account;
 }
 
-export function materializeGithubRepository(
-  fetchPort: MessagePort,
-  owner: string,
-  title: string
-): GithubProfile | null {
-  const repo = _fetch(fetchPort, `https://api.github.com/repos/${owner}/${title}`);
-
-  if (repo) {
-    repo.__typename = `GithubRepository`;
-  }
-
-  return repo;
+export function materializeGithubRepository(owner: string, title: string): GithubRepository | null {
+  return GithubRepository.make(owner, title);
 }
 
 function* yieldMaterializedItems(fetchPort: MessagePort, itemIds: number[]): Generator<Item> {
   for (const id of itemIds) {
-    const item = materializeItem(fetchPort, id);
-    const itemType = item?.['type'];
+    const item = materializeItem(id);
+    const itemType = item?.type();
 
     // Ignore polls. They are very rarely made on HackerNews,
     // and they are not supported in our query schema.
@@ -221,36 +141,18 @@ export function* getUpdatedItems(fetchPort: MessagePort): Generator<Item> {
   yield* yieldMaterializedItems(fetchPort, itemIds);
 }
 
-export function* getUpdatedUserProfiles(fetchPort: MessagePort): Generator<User> {
-  const url = 'https://hacker-news.firebaseio.com/v0/updates.json';
-  const sync = SyncContext.makeDefault();
-  const fetchOptions = {
-    method: 'GET',
-  };
+export function* getUpdatedUserProfiles(): Generator<User> {
+  const { profiles: usernames } = syncFetch('https://hacker-news.firebaseio.com/v0/updates.json');
 
-  const message = {
-    sync: sync.makeSendable(),
-    input: url,
-    init: fetchOptions,
-  };
-  fetchPort.postMessage(message);
-
-  const result = new TextDecoder().decode(sync.receive());
-  const userIds = JSON.parse(result)?.profiles;
-
-  for (const username of userIds) {
-    const user = materializeUser(fetchPort, username);
+  for (const username of usernames) {
+    const user = materializeUser(username);
     if (user) {
       yield user;
     }
   }
 }
 
-function* getSearchResults(
-  fetchPort: MessagePort,
-  endpoint: string,
-  query: string
-): Generator<Item> {
+function* getSearchResults(endpoint: string, query: string): Generator<Item> {
   const hitsPerPage = '50';
   let nextPage = 0;
 
@@ -261,28 +163,13 @@ function* getSearchResults(
       ['hitsPerPage', hitsPerPage],
     ]);
     nextPage += 1;
-    const url = `https://hn.algolia.com/api/v1/${endpoint}?${params}`;
-
-    const sync = SyncContext.makeDefault();
-    const fetchOptions = {
-      method: 'GET',
-    };
-
-    const message = {
-      sync: sync.makeSendable(),
-      input: url,
-      init: fetchOptions,
-    };
-    fetchPort.postMessage(message);
-
-    const result = new TextDecoder().decode(sync.receive());
-    const hits = JSON.parse(result)?.hits;
+    const { hits } = syncFetch(`https://hn.algolia.com/api/v1/${endpoint}?${params}`);
 
     if (hits?.length) {
       for (const hit of hits) {
         const itemId = hit.objectID;
         if (itemId) {
-          const item = materializeItem(fetchPort, itemId);
+          const item = materializeItem(itemId);
           if (item) {
             yield item;
           }
@@ -294,10 +181,10 @@ function* getSearchResults(
   }
 }
 
-export function* getRelevanceSearchResults(fetchPort: MessagePort, query: string): Generator<Item> {
-  yield* getSearchResults(fetchPort, 'search', query);
+export function* getRelevanceSearchResults(query: string): Generator<Item> {
+  yield* getSearchResults('search', query);
 }
 
-export function* getDateSearchResults(fetchPort: MessagePort, query: string): Generator<Item> {
-  yield* getSearchResults(fetchPort, 'search_by_date', query);
+export function* getDateSearchResults(query: string): Generator<Item> {
+  yield* getSearchResults('search_by_date', query);
 }

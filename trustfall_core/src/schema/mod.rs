@@ -171,7 +171,7 @@ directive @transform(op: String!) on FIELD
                 }
             }
         }
-
+        
         let schema = schema.expect("Schema definition was not present.");
         let query_type_name = schema
             .query

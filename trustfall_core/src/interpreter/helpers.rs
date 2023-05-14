@@ -1,4 +1,6 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, collections::BTreeSet};
+
+use itertools::Itertools;
 
 use crate::{ir::FieldValue, schema::Schema};
 
@@ -364,6 +366,15 @@ pub fn resolve_typename<'a, Vertex: Typename + Debug + Clone + 'a>(
             Some(..) => (ctx, type_name.clone()),
         }))
     }
+}
+
+pub fn resolve_coercion_via_type_name(type_name_super: &str, type_name_smaller: &str, schema: &Schema) -> bool {
+    let mut subtypes_iter = match schema.subtypes(type_name_super) {
+        Some(iter) => iter,
+        None => panic!("type {type_name_super} is not part of this schema"),
+    };
+
+    subtypes_iter.contains(&type_name_smaller)
 }
 
 #[cfg(test)]

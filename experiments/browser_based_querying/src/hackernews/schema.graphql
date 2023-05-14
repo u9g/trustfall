@@ -461,7 +461,7 @@ type GithubPullRequest implements Webpage {
   """
   The creator of the pull request.
   """
-  creator: GithubAccount!
+  creator: GithubAccount
 
   """
   The body of the pull request.
@@ -486,10 +486,10 @@ type GithubRepository implements Webpage {
   """
   The owner of the repository.
   """
-  owner: GithubAccount!
+  owner: GithubAccount
 
   """
-  The URL of the pull request on GitHub.
+  The URL of the repository on GitHub.
   """
   url: String!
 }
