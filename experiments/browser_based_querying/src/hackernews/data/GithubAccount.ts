@@ -1,12 +1,12 @@
+import { GithubRepository } from './GithubRepository';
 import { Webpage } from './Webpage';
 
 export abstract class GithubAccount extends Webpage {
-  data: {
-    login: string;
-  };
-  constructor(username: string, data: any) {
+  userName: string;
+
+  constructor(username: string) {
     super(`https://github.com/${username}`);
-    this.data = data;
+    this.userName = username;
   }
 
   //   """
@@ -14,8 +14,16 @@ export abstract class GithubAccount extends Webpage {
   //   """
   //   username: String!
   username(): string {
-    return this.data.login;
+    return this.userName;
   }
 
+  // """
+  // The repositories this github account owns
+  // """
+  // repos: GithubRepository
+  abstract repos(): IterableIterator<GithubRepository>;
+
   __typename = () => 'GithubAccount';
+
+  static GITHUB_API_URL_BASE = 'https://api.github.com';
 }

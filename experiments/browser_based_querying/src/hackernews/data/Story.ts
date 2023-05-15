@@ -1,5 +1,4 @@
-import { materializeWebsite } from '../adapter';
-import { materializeItem } from '../utils';
+import { materializeItem, materializeWebsite } from '../utils';
 import { Comment } from './Comment';
 import { Item } from './Item';
 import { User } from './User';
@@ -98,7 +97,7 @@ export class Story extends Item {
     const url = this.submittedUrl();
     if (url != null) {
       // link submission
-      yield materializeWebsite(url);
+      yield materializeWebsite(url)!;
     } else {
       // text submission
       yield* linksInHnMarkup(this.textHtml());

@@ -15,10 +15,11 @@ export class GithubRepository extends Webpage {
   }
 
   static make(owner: string, title: string): GithubRepository | null {
-    const userData = syncFetch(`https://api.github.com/repos/${owner}/${title}`);
-    if (userData === null) return null;
+    // https://api.github.com/repos/PrismarineJS/mineflayer
+    const repoData = syncFetch(`https://api.github.com/repos/${owner}/${title}`);
+    if (repoData.message === 'Not Found') return null;
 
-    return new GithubRepository(`https://github.com/${owner}/${title}`, userData);
+    return new GithubRepository(`https://github.com/${owner}/${title}`, repoData);
   }
   //   """
   //   The title of the repository.

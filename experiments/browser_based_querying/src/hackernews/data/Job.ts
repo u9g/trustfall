@@ -1,4 +1,4 @@
-import { materializeWebsite } from '../adapter';
+import { materializeWebsite } from '../utils';
 import { Item } from './Item';
 import { Webpage } from './Webpage';
 
@@ -45,6 +45,6 @@ export class Job extends Item {
   //   link: Webpage!
   *link(): IterableIterator<Webpage> {
     const url = this.submittedUrl();
-    yield materializeWebsite(url);
+    yield materializeWebsite(url)!;
   }
 }

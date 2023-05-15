@@ -1,18 +1,26 @@
 import { SyncContext } from '../../sync';
 import { decode } from 'html-entities';
-import { materializeWebsite } from '../adapter';
 import { Webpage } from './Webpage';
-import { Item } from './Item';
-import { materializeItem } from '../utils';
+import { materializeItem, materializeWebsite } from '../utils';
 
 declare const fetchPort: MessagePort;
+
+let fetchCtr = 1;
 
 export function syncFetch(url: string): any | null {
   const sync = SyncContext.makeDefault();
 
-  const fetchOptions = {
+  const fetchOptions: Partial<RequestInit> = {
     method: 'GET',
   };
+
+  if (url.startsWith('https://api.github.com')) {
+    fetchOptions.headers ??= {};
+    const headers = fetchOptions.headers as any;
+    headers.Authorization = `Bearer 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`;
+    headers['X-GitHub-Api-Version'] = '2022-11-28';
+    headers.Accept = 'application/vnd.github+json';
+  }
 
   const message = {
     sync: sync.makeSendable(),
@@ -21,8 +29,16 @@ export function syncFetch(url: string): any | null {
   };
   fetchPort.postMessage(message);
 
-  const result = new TextDecoder().decode(sync.receive());
+  const i = fetchCtr++;
+  const lbl = `fetch ${i}: ${url}`;
+
+  console.time(lbl);
+
+  const recv = sync.receive();
+  const result = new TextDecoder().decode(recv);
   const user = JSON.parse(result);
+
+  console.timeEnd(lbl);
 
   return user;
 }

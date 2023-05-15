@@ -1,4 +1,3 @@
-import { decode } from 'html-entities';
 import {
   Adapter,
   JsEdgeParameters,
@@ -11,23 +10,6 @@ import {
   executeQuery,
 } from '../../www2/trustfall_wasm';
 import debug from '../utils/debug';
-import {
-  getAskStories,
-  getBestItems,
-  getDateSearchResults,
-  getJobItems,
-  getLatestItems,
-  getRelevanceSearchResults,
-  getShowStories,
-  getTopItems,
-  getUpdatedItems,
-  getUpdatedUserProfiles,
-  materializeGithubAccount,
-  materializeGithubPullRequest,
-  materializeGithubRepository,
-  materializeItem,
-  materializeUser,
-} from './utils';
 import HN_SCHEMA from './schema.graphql';
 import { Webpage } from './data/Webpage';
 import * as sources from './data/sources';
@@ -41,71 +23,14 @@ debug('Schema loaded.');
 
 postMessage('ready');
 
-function* limitIterator<T>(iter: IterableIterator<T>, limit: number): IterableIterator<T> {
-  let count = 0;
-  for (const item of iter) {
-    yield item;
-    count += 1;
-    if (count == limit) {
-      break;
-    }
-  }
-}
-
-type Vertex = any;
-
-const _itemPattern = /^https:\/\/news\.ycombinator\.com\/item\?id=(\d+)$/;
-const _userPattern = /^https:\/\/news\.ycombinator\.com\/user\?id=(.+)$/;
-
-// github-username-regex (CC Zero v1) - /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i
-const _githubPullRequestPattern =
-  /^https:\/\/github\.com\/([a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38})\/(.+)\/pull\/(\d+)$/;
-const _githubAccountPattern = /^https:\/\/github\.com\/([a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38})$/;
-const _githubRepoPattern = /^https:\/\/github\.com\/([a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38})\/(.+)$/;
-
-export function materializeWebsite(url: string): Vertex | null {
-  let matcher: RegExpMatchArray | null = null;
-  let ret: any;
-  if ((matcher = url.match(_itemPattern))) {
-    // This is an item.
-    ret = materializeItem(parseInt(matcher[1]));
-  } else if ((matcher = url.match(_userPattern))) {
-    // This is a user.
-    ret = materializeUser(matcher[1]);
-  } else if ((matcher = url.match(_githubPullRequestPattern))) {
-    // This is a github pull request.
-    ret = materializeGithubPullRequest(matcher[1], matcher[2], matcher[3]);
-  } else if ((matcher = url.match(_githubAccountPattern))) {
-    // This is a github profile.
-    ret = materializeGithubAccount(matcher[1]);
-  } else if ((matcher = url.match(_githubRepoPattern))) {
-    // This is a github repository.
-    ret = materializeGithubRepository(matcher[1], matcher[2]);
-  } else {
-    ret = new Webpage(url);
-  }
-  return ret;
-}
-
-function* resolvePossiblyLimitedIterator(
-  iter: IterableIterator<Vertex>,
-  limit: number | undefined
-): IterableIterator<Vertex> {
-  if (limit == undefined) {
-    yield* iter;
-  } else {
-    yield* limitIterator(iter, limit as number);
-  }
-}
-
-export class MyAdapter implements Adapter<Vertex> {
+export class MyAdapter implements Adapter<Webpage> {
   fetchPort: MessagePort;
 
   constructor(fetchPort: MessagePort) {
     this.fetchPort = fetchPort;
   }
 
-  *resolveStartingVertices(edge: string, parameters: JsEdgeParameters): IterableIterator<Vertex> {
+  *resolveStartingVertices(edge: string, parameters: JsEdgeParameters): IterableIterator<Webpage> {
     try {
       const source = (sources as any)[edge];
       if (!source) throw new Error(`sources[${edge}] doesn't exist`);
@@ -117,19 +42,22 @@ export class MyAdapter implements Adapter<Vertex> {
   }
 
   *resolveProperty(
-    contexts: IterableIterator<JsContext<Vertex>>,
+    contexts: IterableIterator<JsContext<Webpage>>,
     type_name: string,
     field_name: string
   ): IterableIterator<ContextAndValue> {
     for (const ctx of contexts) {
       const vertex = ctx.activeVertex;
+      if (vertex === null) continue;
+
       if (!(field_name in vertex)) {
         throw new Error(`[User] Can't call vertex.${field_name}() on "${JSON.stringify(vertex)}"`);
       }
+
       try {
         yield {
           localId: ctx.localId,
-          value: vertex[field_name]?.() || null,
+          value: (vertex as any)[field_name](),
         };
       } catch (e) {
         console.trace({ type_name, field_name, vertex });
@@ -139,34 +67,37 @@ export class MyAdapter implements Adapter<Vertex> {
   }
 
   *resolveNeighbors(
-    contexts: IterableIterator<JsContext<Vertex>>,
+    contexts: IterableIterator<JsContext<Webpage>>,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     type_name: string,
     edge_name: string,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _parameters: JsEdgeParameters
-  ): IterableIterator<ContextAndNeighborsIterator<Vertex>> {
+    parameters: JsEdgeParameters
+  ): IterableIterator<ContextAndNeighborsIterator<Webpage>> {
     for (const ctx of contexts) {
       const vertex = ctx.activeVertex;
+      if (vertex === null) continue;
+
       if (!(edge_name in vertex)) {
         throw new Error(
           `[Neighbors] Can't call vertex.${edge_name}() on "${JSON.stringify(vertex)}"`
         );
       }
+
       try {
         yield {
           localId: ctx.localId,
-          neighbors: vertex[edge_name]?.() || null,
+          neighbors: (vertex as any)[edge_name]() || null,
         };
       } catch (e) {
-        console.trace({ vertex, edge_name, type_name });
+        console.trace({ vertex, edge_name, type_name, parameters });
         throw e;
       }
     }
   }
 
   *resolveCoercion(
-    contexts: IterableIterator<JsContext<Vertex>>,
+    contexts: IterableIterator<JsContext<Webpage>>,
     type_name: string,
     coerce_to_type: string
   ): IterableIterator<ContextAndBool> {
@@ -221,6 +152,8 @@ type AdapterMessage =
       op: 'next';
     };
 
+let actionCounter = 1;
+
 function dispatch(e: MessageEvent<AdapterMessage>): void {
   const payload = e.data;
 
@@ -240,6 +173,7 @@ function dispatch(e: MessageEvent<AdapterMessage>): void {
       _resultIter = performQuery(payload.query, payload.args);
     } catch (e) {
       debug('error running query: ', e);
+      debug(e);
       const result = {
         status: 'error',
         error: `${e}`,
@@ -251,6 +185,8 @@ function dispatch(e: MessageEvent<AdapterMessage>): void {
   }
 
   if (payload.op === 'query' || payload.op === 'next') {
+    const action = actionCounter++;
+    console.time(`IteratorNext: ${action}`);
     const rawResult = _resultIter.next();
     const result = {
       status: 'success',
@@ -258,6 +194,7 @@ function dispatch(e: MessageEvent<AdapterMessage>): void {
       value: rawResult.value,
     };
     postMessage(result);
+    console.timeEnd(`IteratorNext: ${action}`);
     return;
   }
 }

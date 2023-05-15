@@ -1,4 +1,3 @@
-import { SyncContext } from '../sync';
 import { Comment } from './data/Comment';
 import { GithubAccount } from './data/GithubAccount';
 import { GithubOrganization } from './data/GithubOrganization';
@@ -9,7 +8,42 @@ import { Item } from './data/Item';
 import { Job } from './data/Job';
 import { Story } from './data/Story';
 import { User } from './data/User';
+import { Webpage } from './data/Webpage';
 import { syncFetch } from './data/datautils';
+
+const _itemPattern = /^https:\/\/news\.ycombinator\.com\/item\?id=(\d+)$/;
+const _userPattern = /^https:\/\/news\.ycombinator\.com\/user\?id=(.+)$/;
+
+// github-username-regex (CC Zero v1) - /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i
+const _githubPullRequestPattern =
+  /^https:\/\/github\.com\/([a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38})\/(.+)\/pull\/(\d+)$/;
+const _githubAccountPattern = /^https:\/\/github\.com\/([a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38})$/;
+const _githubRepoPattern =
+  /^https:\/\/github\.com\/([a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38})\/([a-zA-Z0-9_]+)$/;
+
+export function materializeWebsite(url: string): Webpage | null {
+  let matcher: RegExpMatchArray | null = null;
+  let ret: any;
+  if ((matcher = url.match(_itemPattern))) {
+    // This is an item.
+    ret = materializeItem(parseInt(matcher[1]));
+  } else if ((matcher = url.match(_userPattern))) {
+    // This is a user.
+    ret = materializeUser(matcher[1]);
+  } else if ((matcher = url.match(_githubPullRequestPattern))) {
+    // This is a github pull request.
+    ret = materializeGithubPullRequest(matcher[1], matcher[2], matcher[3]);
+  } else if ((matcher = url.match(_githubAccountPattern))) {
+    // This is a github profile.
+    ret = materializeGithubAccount(matcher[1]);
+  } else if ((matcher = url.match(_githubRepoPattern))) {
+    // This is a github repository.
+    ret = materializeGithubRepository(matcher[1], matcher[2]);
+  } else {
+    ret = new Webpage(url);
+  }
+  return ret;
+}
 
 export function materializeItem(itemId: number): Item | null {
   const item = syncFetch(`https://hacker-news.firebaseio.com/v0/item/${itemId}.json`);
@@ -43,13 +77,13 @@ export function materializeGithubPullRequest(
 }
 
 export function materializeGithubAccount(username: string): GithubAccount | null {
-  const accountData = syncFetch(`https://api.github.com/users/${username}`);
+  const accountData = syncFetch(`${GithubAccount.GITHUB_API_URL_BASE}/users/${username}`);
   if (accountData === null) return null;
   switch (accountData.type) {
     case 'User':
-      return new GithubUser(username, accountData);
+      return new GithubUser(username);
     case 'Organization':
-      return new GithubOrganization(username, accountData);
+      return new GithubOrganization(username);
     default:
       throw new Error(`Unexpected github account type: ${accountData.type}`);
   }
@@ -57,134 +91,4 @@ export function materializeGithubAccount(username: string): GithubAccount | null
 
 export function materializeGithubRepository(owner: string, title: string): GithubRepository | null {
   return GithubRepository.make(owner, title);
-}
-
-function* yieldMaterializedItems(fetchPort: MessagePort, itemIds: number[]): Generator<Item> {
-  for (const id of itemIds) {
-    const item = materializeItem(id);
-    const itemType = item?.type();
-
-    // Ignore polls. They are very rarely made on HackerNews,
-    // and they are not supported in our query schema.
-    if (itemType === 'story' || itemType === 'job') {
-      yield item as Item;
-    }
-  }
-}
-
-function* resolveListOfItems(fetchPort: MessagePort, url: string): Generator<Item> {
-  const sync = SyncContext.makeDefault();
-  const fetchOptions = {
-    method: 'GET',
-  };
-
-  const message = {
-    sync: sync.makeSendable(),
-    input: url,
-    init: fetchOptions,
-  };
-  fetchPort.postMessage(message);
-
-  const result = new TextDecoder().decode(sync.receive());
-  const itemIds = JSON.parse(result);
-
-  yield* yieldMaterializedItems(fetchPort, itemIds);
-}
-
-export function* getTopItems(fetchPort: MessagePort): Generator<Item> {
-  const url = 'https://hacker-news.firebaseio.com/v0/topstories.json';
-  yield* resolveListOfItems(fetchPort, url);
-}
-
-export function* getLatestItems(fetchPort: MessagePort): Generator<Item> {
-  const url = 'https://hacker-news.firebaseio.com/v0/newstories.json';
-  yield* resolveListOfItems(fetchPort, url);
-}
-
-export function* getBestItems(fetchPort: MessagePort): Generator<Item> {
-  const url = 'https://hacker-news.firebaseio.com/v0/beststories.json';
-  yield* resolveListOfItems(fetchPort, url);
-}
-
-export function* getAskStories(fetchPort: MessagePort): Generator<Item> {
-  const url = 'https://hacker-news.firebaseio.com/v0/askstories.json';
-  yield* resolveListOfItems(fetchPort, url);
-}
-
-export function* getShowStories(fetchPort: MessagePort): Generator<Item> {
-  const url = 'https://hacker-news.firebaseio.com/v0/showstories.json';
-  yield* resolveListOfItems(fetchPort, url);
-}
-
-export function* getJobItems(fetchPort: MessagePort): Generator<Item> {
-  const url = 'https://hacker-news.firebaseio.com/v0/jobstories.json';
-  yield* resolveListOfItems(fetchPort, url);
-}
-
-export function* getUpdatedItems(fetchPort: MessagePort): Generator<Item> {
-  const url = 'https://hacker-news.firebaseio.com/v0/updates.json';
-  const sync = SyncContext.makeDefault();
-  const fetchOptions = {
-    method: 'GET',
-  };
-
-  const message = {
-    sync: sync.makeSendable(),
-    input: url,
-    init: fetchOptions,
-  };
-  fetchPort.postMessage(message);
-
-  const result = new TextDecoder().decode(sync.receive());
-  const itemIds = JSON.parse(result)?.items;
-
-  yield* yieldMaterializedItems(fetchPort, itemIds);
-}
-
-export function* getUpdatedUserProfiles(): Generator<User> {
-  const { profiles: usernames } = syncFetch('https://hacker-news.firebaseio.com/v0/updates.json');
-
-  for (const username of usernames) {
-    const user = materializeUser(username);
-    if (user) {
-      yield user;
-    }
-  }
-}
-
-function* getSearchResults(endpoint: string, query: string): Generator<Item> {
-  const hitsPerPage = '50';
-  let nextPage = 0;
-
-  while (true) {
-    const params = new URLSearchParams([
-      ['query', query],
-      ['page', nextPage.toString()],
-      ['hitsPerPage', hitsPerPage],
-    ]);
-    nextPage += 1;
-    const { hits } = syncFetch(`https://hn.algolia.com/api/v1/${endpoint}?${params}`);
-
-    if (hits?.length) {
-      for (const hit of hits) {
-        const itemId = hit.objectID;
-        if (itemId) {
-          const item = materializeItem(itemId);
-          if (item) {
-            yield item;
-          }
-        }
-      }
-    } else {
-      break;
-    }
-  }
-}
-
-export function* getRelevanceSearchResults(query: string): Generator<Item> {
-  yield* getSearchResults('search', query);
-}
-
-export function* getDateSearchResults(query: string): Generator<Item> {
-  yield* getSearchResults('search_by_date', query);
 }

@@ -100,7 +100,7 @@ type RootSchemaQuery {
   of latest items. Otherwise, queries will continue fetching jobs
   as deep as the HackerNews API allows.
   """
-  RecentJob(max: Int): [Story!]!
+  RecentJob(max: Int): [Job!]!
 
   """
   Look up a user by their username.
@@ -417,6 +417,11 @@ type GithubUser implements GithubAccount & Webpage {
   The URL of the profile for the account on GitHub.
   """
   url: String!
+
+  """
+  The repositories this github account owns
+  """
+  repos: [GithubRepository!]!
 }
 
 """
@@ -432,6 +437,11 @@ type GithubOrganization implements GithubAccount & Webpage {
   The URL of the profile for the account on GitHub.
   """
   url: String!
+
+  """
+  The repositories this github account owns
+  """
+  repos: [GithubRepository!]!
 }
 
 """
@@ -447,6 +457,11 @@ interface GithubAccount implements Webpage {
   The URL of the profile for the account on GitHub.
   """
   url: String!
+
+  """
+  The repositories this github account owns
+  """
+  repos: [GithubRepository!]!
 }
 
 """

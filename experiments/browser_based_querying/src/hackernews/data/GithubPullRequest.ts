@@ -17,6 +17,7 @@ export class GithubPullRequest extends Webpage {
   static make(owner: string, repo: string, number: string): GithubPullRequest | null {
     const prData = syncFetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${number}`);
     if (prData === null) return null;
+
     return new GithubPullRequest(`https://github.com/${owner}/${repo}/pull/${number}`, prData);
   }
 
