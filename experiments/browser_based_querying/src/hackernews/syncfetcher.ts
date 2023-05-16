@@ -14,7 +14,7 @@ export function syncFetch(url: string): any | null {
   if (url.startsWith('https://api.github.com')) {
     fetchOptions.headers ??= {};
     const headers = fetchOptions.headers as any;
-    headers.Authorization = `Bearer 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`;
+    headers.Authorization = `Bearer `;
     headers['X-GitHub-Api-Version'] = '2022-11-28';
     headers.Accept = 'application/vnd.github+json';
   }
@@ -33,9 +33,10 @@ export function syncFetch(url: string): any | null {
 
   const recv = sync.receive();
   const result = new TextDecoder().decode(recv);
-  const user = JSON.parse(result);
+  const data = JSON.parse(result);
 
+  // console.timeLog(lbl, data);
   console.timeEnd(lbl);
 
-  return user;
+  return data;
 }

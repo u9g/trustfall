@@ -53,8 +53,11 @@ export function materializeItem(itemId: string): Item | null {
   }
 
   switch (item.type) {
-    case 'comment':
-      return new Comment(itemId, { hn: item });
+    case 'comment': {
+      const comment = new Comment(itemId, { hn: item });
+      if (comment.deleted()) return null;
+      return comment;
+    }
     case 'story':
       return new Story(itemId, { hn: item });
     case 'job':

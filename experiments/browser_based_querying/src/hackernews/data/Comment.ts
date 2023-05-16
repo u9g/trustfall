@@ -12,7 +12,12 @@ export class Comment extends Item<{
   text: string;
   parent?: number;
   kids?: number[];
+  deleted?: true;
 }> {
+  // not exposed to queries
+  deleted() {
+    return 'hn' in this.data ? this.data.hn.deleted ?? false : false;
+  }
   //   # own properties
   //   """
   //   The name of the user that submitted this comment.
