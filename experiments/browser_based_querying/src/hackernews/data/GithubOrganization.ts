@@ -1,7 +1,7 @@
 import { materializeGithubRepository } from '../utils';
 import { GithubAccount } from './GithubAccount';
 import { GithubRepository } from './GithubRepository';
-import { syncFetch } from './datautils';
+import { syncFetch } from '../syncfetcher';
 
 export class GithubOrganization extends GithubAccount {
   constructor(username: string) {

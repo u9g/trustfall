@@ -110,7 +110,7 @@ type RootSchemaQuery {
   """
   Look up an item by its ID number.
   """
-  Item(id: Int!): Item
+  Item(id: String!): Item
 
   """
   Most-recently updated items, such as stories or job postings.
@@ -156,7 +156,7 @@ interface Item implements Webpage {
   """
   The item's unique identifier.
   """
-  id: Int!
+  id: String!
 
   """
   The item's timestamp, as a number in Unix time.
@@ -177,7 +177,7 @@ type Job implements Item & Webpage {
   """
   The item's unique identifier.
   """
-  id: Int!
+  id: String!
 
   """
   The item's timestamp, as a number in Unix time.
@@ -220,7 +220,7 @@ type Story implements Item & Webpage {
   """
   The item's unique identifier.
   """
-  id: Int!
+  id: String!
 
   """
   The item's timestamp, as a number in Unix time.
@@ -293,7 +293,7 @@ type Comment implements Item & Webpage {
   """
   The item's unique identifier.
   """
-  id: Int!
+  id: String!
 
   """
   The item's timestamp, as a number in Unix time.

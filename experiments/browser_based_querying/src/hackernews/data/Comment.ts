@@ -4,35 +4,31 @@ import { User } from './User';
 import { Webpage } from './Webpage';
 import { extractPlainTextFromHnMarkup, linksInHnMarkup } from './datautils';
 
-export class Comment extends Item {
-  data: {
-    id: number;
-    time: number;
-    type: string;
-    by: string;
-    text: string;
-    parent?: number;
-    kids?: number[];
-  };
-  constructor(itemId: number, data: any) {
-    super(itemId, data);
-    this.data = data;
-  }
-
+export class Comment extends Item<{
+  id: number;
+  time: number;
+  type: string;
+  by: string;
+  text: string;
+  parent?: number;
+  kids?: number[];
+}> {
   //   # own properties
   //   """
   //   The name of the user that submitted this comment.
   //   """
   //   byUsername: String!
   byUsername(): string {
-    return this.data.by;
+    if (!('hn' in this.data)) throw new Error("[Comment] this.byUsername can't find this.data");
+    return this.data.hn.by;
   }
   //   """
   //   The text contained in the comment, represented as HTML.
   //   """
   //   textHtml: String!
   textHtml(): string {
-    return this.data.text;
+    if (!('hn' in this.data)) throw new Error("[Comment] this.textHtml can't find this.data");
+    return this.data.hn.text;
   }
   //   """
   //   The text contained in the comment, as plain text with HTML tags removed.
@@ -54,8 +50,9 @@ export class Comment extends Item {
   //   """
   //   reply: [Comment!]
   *reply(): IterableIterator<Comment> {
-    for (const comment of this.data.kids ?? []) {
-      const item = materializeItem(comment);
+    if (!('hn' in this.data)) throw new Error("[Comment] this.reply can't find this.data");
+    for (const comment of this.data.hn.kids ?? []) {
+      const item = materializeItem(comment.toString());
       if (item != null) {
         yield item as Comment;
       }
@@ -76,9 +73,11 @@ export class Comment extends Item {
   //   """
   //   parent: Item! # either a parent comment or the story being commented on
   *parent(): IterableIterator<Item> {
-    const parent = this.data.parent;
+    if (!('hn' in this.data)) throw new Error("[Comment] this.parent can't find this.data");
+
+    const parent = this.data.hn.parent;
     if (parent == null) return;
-    const item = materializeItem(parent);
+    const item = materializeItem(parent.toString());
     if (item === null) throw new Error("Comment doesn't have a parent");
     yield item;
   }

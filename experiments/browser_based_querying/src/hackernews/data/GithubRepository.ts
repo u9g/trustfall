@@ -1,7 +1,7 @@
 import { materializeGithubAccount } from '../utils';
 import { GithubAccount } from './GithubAccount';
 import { Webpage } from './Webpage';
-import { syncFetch } from './datautils';
+import { syncFetch } from '../syncfetcher';
 
 export class GithubRepository extends Webpage {
   data: {

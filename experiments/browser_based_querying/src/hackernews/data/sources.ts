@@ -7,7 +7,12 @@ import { Item as HNItem } from './Item';
 import { Job } from './Job';
 import { Story } from './Story';
 import { User as HNUser } from './User';
-import { hackernewsAlgoliaSearch, limitedListIterator, syncFetch } from './datautils';
+import {
+  hackernewsAlgoliaLatest,
+  hackernewsAlgoliaSearch,
+  limitIterator,
+  limitedListIterator,
+} from './datautils';
 
 //   FrontPage: [Item!]!
 export function* FrontPage(): IterableIterator<HNItem> {
@@ -38,11 +43,17 @@ export function* Top({ max }: { max?: number }): IterableIterator<HNItem> {
 //   """
 //   Latest(max: Int): [Story!]!
 export function* Latest({ max }: { max?: number } = {}): IterableIterator<Story> {
-  yield* limitedListIterator(
-    'https://hacker-news.firebaseio.com/v0/newstories.json',
-    max,
-    materializeItem
-  );
+  const iter = hackernewsAlgoliaLatest();
+  if (max != null) {
+    yield* limitIterator(iter, max);
+  } else {
+    yield* iter;
+  }
+  // yield* limitedListIterator(
+  //   'https://hacker-news.firebaseio.com/v0/newstories.json',
+  //   max,
+  //   materializeItem
+  // );
 }
 
 //   """
@@ -117,7 +128,7 @@ export function* User({ name }: { name: string }): IterableIterator<HNUser> {
 //   Look up an item by its ID number.
 //   """
 //   Item(id: Int!): Item
-export function* Item({ id }: { id: number }): IterableIterator<HNItem> {
+export function* Item({ id }: { id: string }): IterableIterator<HNItem> {
   const result = materializeItem(id);
   if (result !== null) yield result;
 }

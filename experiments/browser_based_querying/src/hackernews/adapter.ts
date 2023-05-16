@@ -55,6 +55,7 @@ export class MyAdapter implements Adapter<Webpage> {
       }
 
       try {
+        // console.log({ resolveProperty: { type_name, field_name, vertex } });
         yield {
           localId: ctx.localId,
           value: (vertex as any)[field_name](),
@@ -85,6 +86,7 @@ export class MyAdapter implements Adapter<Webpage> {
       }
 
       try {
+        // console.log({ resolveNeighbors: { type_name, edge_name, parameters, vertex } });
         yield {
           localId: ctx.localId,
           neighbors: (vertex as any)[edge_name]() || null,

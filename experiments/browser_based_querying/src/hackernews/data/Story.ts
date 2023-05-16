@@ -5,36 +5,37 @@ import { User } from './User';
 import { Webpage } from './Webpage';
 import { extractPlainTextFromHnMarkup, linksInHnMarkup } from './datautils';
 
-export class Story extends Item {
-  data: {
-    id: number;
-    time: number;
-    type: string;
-    by: string;
-    score: number;
-    text?: string;
-    title: string;
-    url?: string;
-    kids?: number[];
-  };
-  constructor(itemId: number, data: any) {
-    super(itemId, data);
-    this.data = data;
-  }
+export class Story extends Item<{
+  id: number;
+  time: number;
+  type: string;
+  by: string;
+  score: number;
+  text?: string;
+  title: string;
+  url?: string;
+  kids?: number[];
+}> {
   //   # own properties
   //   """
   //   The display name of the user that submitted this story.
   //   """
   //   byUsername: String!
   byUsername(): string {
-    return this.data.by;
+    if ('hn' in this.data) {
+      return this.data.hn.by;
+    }
+    return this.data.algolia.author;
   }
   //   """
   //   The current score of this story submission.
   //   """
   //   score: Int!
   score(): number {
-    return this.data.score;
+    if ('hn' in this.data) {
+      return this.data.hn.score;
+    }
+    return this.data.algolia.points;
   }
   //   """
   //   For text submissions, contains the submitted text as HTML.
@@ -42,7 +43,10 @@ export class Story extends Item {
   //   """
   //   textHtml: String
   textHtml(): string | null {
-    return this.data.text ?? null;
+    if ('hn' in this.data) {
+      return this.data.hn.text ?? null;
+    }
+    return this.data.algolia.story_text ?? null;
   }
   //   """
   //   For text submissions, contains the submitted text as plain text,
@@ -57,7 +61,10 @@ export class Story extends Item {
   //   """
   //   title: String!
   title(): string {
-    return this.data.title;
+    if ('hn' in this.data) {
+      return this.data.hn.title;
+    }
+    return this.data.algolia.title;
   }
   //   """
   //   For link submissions, contains the submitted link.
@@ -65,7 +72,10 @@ export class Story extends Item {
   //   """
   //   submittedUrl: String
   submittedUrl(): string | null {
-    return this.data.url ?? null;
+    if ('hn' in this.data) {
+      return this.data.hn.url ?? null;
+    }
+    return this.data.algolia.url ?? null;
   }
   //   # edges
   //   """
@@ -80,8 +90,15 @@ export class Story extends Item {
   //   """
   //   comment: [Comment!]
   *comment(): IterableIterator<Comment> {
-    for (const comment of this.data.kids ?? []) {
-      const item = materializeItem(comment);
+    if ('algolia' in this.data) {
+      if (this.data.algolia.num_comments === 0) {
+        return;
+      }
+
+      this.data = { hn: this.materializePostData() };
+    }
+    for (const comment of this.data.hn.kids ?? []) {
+      const item = materializeItem(comment.toString());
       if (item != null) {
         yield item as Comment;
       }

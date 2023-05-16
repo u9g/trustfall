@@ -1,3 +1,4 @@
+const CircularDependencyPlugin = require('circular-dependency-plugin');
 const HTMLPlugin = require('html-webpack-plugin');
 const path = require('path');
 
@@ -32,6 +33,7 @@ module.exports = (env) => {
         },
         template: './src/index.ejs',
       }),
+      // new CircularDependencyPlugin(),
     ],
     module: {
       rules: [

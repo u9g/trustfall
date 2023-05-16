@@ -1,7 +1,8 @@
+import { syncFetch } from '../syncfetcher';
 import { materializeItem } from '../utils';
 import { Item } from './Item';
 import { Webpage } from './Webpage';
-import { extractPlainTextFromHnMarkup, linksInAboutPage, syncFetch } from './datautils';
+import { extractPlainTextFromHnMarkup, linksInAboutPage } from './datautils';
 
 export class User extends Webpage {
   #data: {
@@ -23,8 +24,8 @@ export class User extends Webpage {
     return new User(username, userData);
   }
 
-  id(): number {
-    return this.#data.id;
+  id(): string {
+    return this.#data.id.toString();
   }
   karma(): number {
     return this.#data.karma;
@@ -43,7 +44,7 @@ export class User extends Webpage {
   }
   *submitted(): IterableIterator<Item> {
     for (const submitted of this.#data.submitted) {
-      const result = materializeItem(submitted);
+      const result = materializeItem(submitted.toString());
       if (result != null) {
         yield result;
       }

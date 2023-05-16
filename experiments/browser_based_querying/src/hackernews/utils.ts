@@ -9,7 +9,7 @@ import { Job } from './data/Job';
 import { Story } from './data/Story';
 import { User } from './data/User';
 import { Webpage } from './data/Webpage';
-import { syncFetch } from './data/datautils';
+import { syncFetch } from './syncfetcher';
 
 const _itemPattern = /^https:\/\/news\.ycombinator\.com\/item\?id=(\d+)$/;
 const _userPattern = /^https:\/\/news\.ycombinator\.com\/user\?id=(.+)$/;
@@ -26,7 +26,7 @@ export function materializeWebsite(url: string): Webpage | null {
   let ret: any;
   if ((matcher = url.match(_itemPattern))) {
     // This is an item.
-    ret = materializeItem(parseInt(matcher[1]));
+    ret = materializeItem(matcher[1]);
   } else if ((matcher = url.match(_userPattern))) {
     // This is a user.
     ret = materializeUser(matcher[1]);
@@ -45,7 +45,7 @@ export function materializeWebsite(url: string): Webpage | null {
   return ret;
 }
 
-export function materializeItem(itemId: number): Item | null {
+export function materializeItem(itemId: string): Item | null {
   const item = syncFetch(`https://hacker-news.firebaseio.com/v0/item/${itemId}.json`);
 
   if (item === null) {
@@ -54,13 +54,13 @@ export function materializeItem(itemId: number): Item | null {
 
   switch (item.type) {
     case 'comment':
-      return new Comment(itemId, item);
+      return new Comment(itemId, { hn: item });
     case 'story':
-      return new Story(itemId, item);
+      return new Story(itemId, { hn: item });
     case 'job':
-      return new Job(itemId, item);
+      return new Job(itemId, { hn: item });
     default:
-      return new Item(itemId, item);
+      return new Item(itemId, { hn: item });
   }
 }
 

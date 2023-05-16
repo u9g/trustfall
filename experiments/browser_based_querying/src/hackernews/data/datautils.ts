@@ -1,47 +1,9 @@
-import { SyncContext } from '../../sync';
 import { decode } from 'html-entities';
 import { Webpage } from './Webpage';
 import { materializeItem, materializeWebsite } from '../utils';
-
-declare const fetchPort: MessagePort;
-
-let fetchCtr = 1;
-
-export function syncFetch(url: string): any | null {
-  const sync = SyncContext.makeDefault();
-
-  const fetchOptions: Partial<RequestInit> = {
-    method: 'GET',
-  };
-
-  if (url.startsWith('https://api.github.com')) {
-    fetchOptions.headers ??= {};
-    const headers = fetchOptions.headers as any;
-    headers.Authorization = `Bearer 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`;
-    headers['X-GitHub-Api-Version'] = '2022-11-28';
-    headers.Accept = 'application/vnd.github+json';
-  }
-
-  const message = {
-    sync: sync.makeSendable(),
-    input: url,
-    init: fetchOptions,
-  };
-  fetchPort.postMessage(message);
-
-  const i = fetchCtr++;
-  const lbl = `fetch ${i}: ${url}`;
-
-  console.time(lbl);
-
-  const recv = sync.receive();
-  const result = new TextDecoder().decode(recv);
-  const user = JSON.parse(result);
-
-  console.timeEnd(lbl);
-
-  return user;
-}
+import { Story } from './Story';
+import { syncFetch } from '../syncfetcher';
+import { AlgoliaSearchResult } from '../sources/algolia_search';
 
 export function extractPlainTextFromHnMarkup<T extends string | null>(hnText: T): T {
   // HN comments are not-quite-HTML: they support italics, links, paragraphs,
@@ -123,7 +85,7 @@ export function* resolveListOf<T>(url: string, materializer: (id: any) => T): Ge
   }
 }
 
-function* limitIterator<T>(iter: IterableIterator<T>, limit: number): IterableIterator<T> {
+export function* limitIterator<T>(iter: IterableIterator<T>, limit: number): IterableIterator<T> {
   let count = 0;
   for (const item of iter) {
     yield item;
@@ -148,21 +110,39 @@ export function* limitedListIterator<T>(
   }
 }
 
-export function* hackernewsAlgoliaSearch(endpoint: string, query: string) {
+function* hackernewsAlgoliaFetcher(
+  endpoint: string,
+  params: Record<string, string>
+): IterableIterator<any> {
   let page = 0;
+
   while (true) {
-    const params = new URLSearchParams({
-      query: query,
+    const paramsStr = new URLSearchParams({
       page: (page++).toString(),
-      hitsPerPage: '50',
+      hitsPerPage: '200',
+      ...params,
     }).toString();
 
-    const { hits } = syncFetch(`https://hn.algolia.com/api/v1/${endpoint}?${params}`);
+    const { hits } = syncFetch(`https://hn.algolia.com/api/v1/${endpoint}?${paramsStr}`);
     if (!hits?.length) return;
 
-    for (const { objectID: itemId } of hits) {
-      const item = materializeItem(itemId);
-      if (item !== null) yield item;
+    for (const hit of hits) {
+      yield hit;
     }
+  }
+}
+
+export function* hackernewsAlgoliaSearch(endpoint: string, query: string) {
+  const f = hackernewsAlgoliaFetcher(endpoint, { query });
+  for (const { objectID: itemId } of f) {
+    const item = materializeItem(itemId);
+    if (item !== null) yield item;
+  }
+}
+
+export function* hackernewsAlgoliaLatest() {
+  const f = hackernewsAlgoliaFetcher('search_by_date', { tags: 'story' });
+  for (const hit of f) {
+    yield new Story(hit.objectID, { algolia: hit as AlgoliaSearchResult });
   }
 }
