@@ -1,0 +1,19 @@
+InputQuery (
+    query: r#"
+{
+  RecentlySoldItems {
+    item {
+      ... on SetCrystal {
+        crystal_type @fold @transform(op: "count") @filter(op: ">=", value: ["$_4"]) {
+          crystals: name @output @filter(op: "!=", value: ["$KOTH_NAME"])
+        }
+        item_name: name @output
+      }
+    }
+  }
+}"#,
+  args: {
+    "KOTH_NAME": String("KOTH"),
+    "_4": Uint64(4)
+  }
+)

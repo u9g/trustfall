@@ -1,0 +1,18 @@
+InputQuery (
+    query: r#"
+{
+  RecentlySoldItems {
+    item {
+      ... on SetCrystal {
+        crystal_type @fold {
+          crystals: name @output
+        }
+        item_name: name @output
+      }
+    }
+  }
+}"#,
+    args: {
+        
+    }
+)
