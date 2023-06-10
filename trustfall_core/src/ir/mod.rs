@@ -335,12 +335,14 @@ impl FieldRef {
 pub enum Argument {
     Tag(FieldRef),
     Variable(VariableRef),
+    Number(Number),
 }
 
 impl Argument {
     pub(crate) fn as_tag(&self) -> Option<&FieldRef> {
         match self {
             Argument::Tag(t) => Some(t),
+            Argument::Number(_) => None,
             Argument::Variable(_) => None,
         }
     }
@@ -860,6 +862,17 @@ pub struct LocalField {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VariableRef {
     pub variable_name: Arc<str>,
+
+    #[serde(serialize_with = "crate::ir::serialization::serde_type_serializer")]
+    #[serde(deserialize_with = "crate::ir::serialization::serde_type_deserializer")]
+    pub variable_type: Type,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Number {
+    pub number: i64,
+
+    pub field_name: Arc<str>,
 
     #[serde(serialize_with = "crate::ir::serialization::serde_type_serializer")]
     #[serde(deserialize_with = "crate::ir::serialization::serde_type_deserializer")]

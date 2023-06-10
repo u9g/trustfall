@@ -287,6 +287,10 @@ pub(super) fn apply_filter<'query, AdapterT: Adapter<'query>>(
             let right_value = query_arguments[var.variable_name.as_ref()].to_owned();
             apply_filter_with_static_argument_value(filter, right_value, iterator)
         }
+        Some(Argument::Number(number)) => {
+            let right_value = FieldValue::Int64(number.number);
+            apply_filter_with_static_argument_value(filter, right_value, iterator)
+        }
         Some(Argument::Tag(FieldRef::ContextField(context_field))) => {
             // TODO: Benchmark if it would be faster to duplicate the filtering code to special-case
             //       the situation when the tag is always known to exist, so we don't have to unwrap

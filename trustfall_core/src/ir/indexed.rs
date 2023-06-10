@@ -162,7 +162,7 @@ fn add_data_from_component(
                         }
                     }
                 }
-                Some(Argument::Tag(..)) | None => {}
+                Some(Argument::Tag(..)) | Some(Argument::Number(..)) | None => {}
             }
         }
     }

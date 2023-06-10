@@ -23,6 +23,8 @@ pub enum OperatorArgument {
     /// in the query and marked with the `@tag` directive -- see [TagDirective].
     /// Tag names are always prefixed with `%`.
     TagRef(Arc<str>),
+
+    Number(i64),
 }
 
 /// A Trustfall `@filter` directive.
@@ -82,7 +84,7 @@ impl TryFrom<&Positioned<Directive>> for FilterDirective {
                     .iter()
                     .map(|v| match v {
                         Value::String(s) => {
-                            let name = if s.starts_with('$') || s.starts_with('%') {
+                            let name = if s.starts_with('$') || s.starts_with('%') || s.starts_with('!') {
                                 s.split_at(1).1
                             } else {
                                 return Err(ParseError::OtherError(
@@ -95,7 +97,7 @@ impl TryFrom<&Positioned<Directive>> for FilterDirective {
                             assert!(!name.is_empty());
 
                             let first_char = name.chars().next().unwrap();
-                            if  !first_char.is_ascii_alphabetic() && first_char != '_' {
+                            if  !first_char.is_ascii_alphabetic() && first_char != '_' && s.chars().next().unwrap() != '!' {
                                 return Err(ParseError::OtherError(
                                     format!("Filter argument names must start with an ASCII letter or underscore character: {name}"),
                                     value_argument.pos))
@@ -113,6 +115,8 @@ impl TryFrom<&Positioned<Directive>> for FilterDirective {
                                 Ok(OperatorArgument::VariableRef(name.into()))
                             } else if s.starts_with('%') {
                                 Ok(OperatorArgument::TagRef(name.into()))
+                            } else if s.starts_with('!') {
+                                Ok(OperatorArgument::Number(name.parse::<i64>().unwrap()))
                             } else {
                                 unreachable!()
                             }

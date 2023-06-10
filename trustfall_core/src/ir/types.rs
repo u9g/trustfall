@@ -4,7 +4,7 @@ use async_graphql_parser::types::{BaseType, Type};
 
 use super::{
     Argument, ContextField, FieldRef, FieldValue, FoldSpecificField, FoldSpecificFieldKind,
-    LocalField, VariableRef,
+    LocalField, Number, VariableRef,
 };
 
 pub trait NamedTypedValue: Debug + Clone + PartialEq + Eq {
@@ -79,11 +79,22 @@ impl NamedTypedValue for FieldRef {
     }
 }
 
+impl NamedTypedValue for Number {
+    fn typed(&self) -> &Type {
+        &self.variable_type
+    }
+
+    fn named(&self) -> &str {
+        &self.field_name
+    }
+}
+
 impl NamedTypedValue for Argument {
     fn typed(&self) -> &Type {
         match self {
             Argument::Tag(t) => t.typed(),
             Argument::Variable(v) => v.typed(),
+            Argument::Number(n) => n.typed(),
         }
     }
 
@@ -91,6 +102,7 @@ impl NamedTypedValue for Argument {
         match self {
             Argument::Tag(t) => t.named(),
             Argument::Variable(v) => v.named(),
+            Argument::Number(n) => n.named(),
         }
     }
 }

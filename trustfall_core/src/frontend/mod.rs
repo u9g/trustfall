@@ -385,6 +385,15 @@ fn make_filter_expr<LeftT: NamedTypedValue>(
 
                         Argument::Tag(defined_tag.field.clone())
                     }
+
+                    OperatorArgument::Number(value) => Argument::Number(crate::ir::Number {
+                        number: *value,
+                        field_name: Arc::from("Int"),
+                        variable_type: Type {
+                            base: BaseType::Named(Name::new(Arc::from("Int"))),
+                            nullable: false,
+                        },
+                    }),
                 })
             },
         )
