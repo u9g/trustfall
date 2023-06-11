@@ -9,6 +9,7 @@ import {
   Schema,
   initialize,
   executeQuery,
+  JsFieldValue,
 } from '../../www2/trustfall_wasm';
 import debug from '../utils/debug';
 import {
@@ -36,24 +37,135 @@ postMessage('ready');
 
 type Vertex = any;
 
-const HNItemFieldMappings: Record<string, string> = {
-  __typename: '__typename',
-  id: 'id',
-  unixTime: 'time',
-  title: 'title',
-  score: 'score',
-  submittedUrl: 'url',
-  byUsername: 'by',
-  textHtml: 'text',
-  // commentsCount: 'descendants',
-};
+type In = IterableIterator<JsContext<Vertex>>;
+type Out<T extends JsFieldValue = JsFieldValue> = IterableIterator<ContextAndValue<T>>;
 
-const HNUserFieldMappings: Record<string, string> = {
-  __typename: '__typename',
-  id: 'id',
-  karma: 'karma',
-  aboutHtml: 'about',
-  unixCreatedAt: 'created',
+function* item_url(data: In): Out {
+  for (const { localId, activeVertex } of data) {
+    if (!activeVertex) yield { value: null, localId };
+
+    yield { value: `https://news.ycombinator.com/item?id=${activeVertex.id}`, localId };
+  }
+}
+
+function* id(data: In): Out {
+  for (const { localId, activeVertex } of data) {
+    yield { value: activeVertex?.id ?? null, localId };
+  }
+}
+
+function* unixTime(data: In): Out {
+  for (const { localId, activeVertex } of data) {
+    yield { value: activeVertex?.time ?? null, localId };
+  }
+}
+
+function* byUsername(data: In): Out {
+  for (const { localId, activeVertex } of data) {
+    yield { value: activeVertex?.by ?? null, localId };
+  }
+}
+
+function* title(data: In): Out {
+  for (const { localId, activeVertex } of data) {
+    yield { value: activeVertex?.title ?? null, localId };
+  }
+}
+
+function* score(data: In): Out {
+  for (const { localId, activeVertex } of data) {
+    yield { value: activeVertex?.score ?? null, localId };
+  }
+}
+
+function* textHtml(data: In): Out<string | null> {
+  for (const { localId, activeVertex } of data) {
+    yield { value: activeVertex?.text ?? null, localId };
+  }
+}
+
+function* textPlain(data: In): Out {
+  for (const { localId, value } of textHtml(data)) {
+    yield { value: extractPlainTextFromHnMarkup(value) ?? null, localId };
+  }
+}
+
+function* submittedUrl(data: In): Out {
+  for (const { localId, activeVertex } of data) {
+    yield { value: activeVertex?.url ?? null, localId };
+  }
+}
+
+function* user_aboutHtml(data: In): Out<string | null> {
+  for (const { localId, activeVertex } of data) {
+    yield { value: activeVertex?.about ?? null, localId };
+  }
+}
+
+const vertices: Record<string, Record<string, (data: In) => Out>> = {
+  Webpage: {
+    url: function* (data) {
+      for (const { localId, activeVertex } of data) {
+        yield { value: activeVertex?.url ?? null, localId };
+      }
+    },
+  },
+  Item: {
+    id,
+    unixTime,
+    url: item_url,
+  },
+  Story: {
+    id,
+    unixTime,
+    url: item_url,
+    byUsername,
+    score,
+    textHtml,
+    textPlain,
+    title,
+    submittedUrl,
+  },
+  Comment: {
+    id,
+    unixTime,
+    url: item_url,
+    textHtml,
+    textPlain,
+    byUsername,
+  },
+  User: {
+    id,
+    karma: function* (data) {
+      for (const { localId, activeVertex } of data) {
+        yield { value: activeVertex?.karma ?? null, localId };
+      }
+    },
+    aboutHtml: user_aboutHtml,
+    aboutPlain: function* (data) {
+      for (const { localId, value } of user_aboutHtml(data)) {
+        yield { value: extractPlainTextFromHnMarkup(value), localId };
+      }
+    },
+    unixCreatedAt: function* (data) {
+      for (const { localId, activeVertex } of data) {
+        yield { value: activeVertex?.created ?? null, localId };
+      }
+    },
+    url: function* (data) {
+      for (const { localId, activeVertex } of data) {
+        if (!activeVertex) yield { value: null, localId };
+
+        yield { value: `https://news.ycombinator.com/user?id=${activeVertex.id}`, localId };
+      }
+    },
+  },
+  Job: {
+    id,
+    unixTime,
+    url: item_url,
+    title,
+  },
 };
 
 function* limitIterator<T>(iter: IterableIterator<T>, limit: number): IterableIterator<T> {
@@ -144,23 +256,18 @@ function* linksInAboutPage(
   }
 }
 
-function extractPlainTextFromHnMarkup(hnText: null): null;
-function extractPlainTextFromHnMarkup(hnText: string): string;
-function extractPlainTextFromHnMarkup(hnText: string | null): string | null {
+export function extractPlainTextFromHnMarkup<T extends string | null>(hnText: T): T {
   // HN comments are not-quite-HTML: they support italics, links, paragraphs,
   // and preformatted text (code blocks), and use HTML escape sequences.
   // Docs: https://news.ycombinator.com/formatdoc
-  if (hnText) {
-    return decode(
-      hnText
-        .replaceAll('</a>', '') // remove closing link tags
-        .replaceAll(/<a[^>]*>/g, '') // remove opening link tags
-        .replaceAll(/<\/?(?:i|pre|code)>/g, '') // remove formatting tags
-        .replaceAll('<p>', '\n') // turn paragraph tags into newlines
-    );
-  } else {
-    return null;
-  }
+  if (hnText === null) return null as T;
+  return decode(
+    hnText
+      .replaceAll('</a>', '') // remove closing link tags
+      .replaceAll(/<a[^>]*>/g, '') // remove opening link tags
+      .replaceAll(/<\/?(?:i|pre|code)>/g, '') // remove formatting tags
+      .replaceAll('<p>', '\n') // turn paragraph tags into newlines
+  ) as T;
 }
 
 function* resolvePossiblyLimitedIterator(
@@ -265,136 +372,9 @@ export class MyAdapter implements Adapter<Vertex> {
     type_name: string,
     field_name: string
   ): IterableIterator<ContextAndValue> {
-    if (field_name === '__typename') {
-      for (const ctx of contexts) {
-        yield {
-          localId: ctx.localId,
-          value: ctx.activeVertex?.__typename || null,
-        };
-      }
-      return;
-    }
-
-    if (
-      type_name === 'Item' ||
-      type_name === 'Story' ||
-      type_name === 'Job' ||
-      type_name === 'Comment'
-    ) {
-      switch (field_name) {
-        case 'url': {
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-
-            let value = null;
-            if (vertex) {
-              value = `https://news.ycombinator.com/item?id=${vertex.id}`;
-            }
-
-            yield {
-              localId: ctx.localId,
-              value: value,
-            };
-          }
-          break;
-        }
-        case 'textPlain': {
-          const fieldKey = HNItemFieldMappings.textHtml;
-
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-
-            let value = null;
-            if (vertex) {
-              value = extractPlainTextFromHnMarkup(vertex[fieldKey]);
-            }
-
-            yield {
-              localId: ctx.localId,
-              value: value,
-            };
-          }
-          break;
-        }
-        default: {
-          const fieldKey = HNItemFieldMappings[field_name];
-          if (fieldKey == undefined) {
-            throw new Error(`Unexpected property for type ${type_name}: ${field_name}`);
-          }
-
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-
-            yield {
-              localId: ctx.localId,
-              value: vertex?.[fieldKey] || null,
-            };
-          }
-        }
-      }
-    } else if (type_name === 'User') {
-      switch (field_name) {
-        case 'url': {
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-
-            let value = null;
-            if (vertex) {
-              value = `https://news.ycombinator.com/user?id=${vertex.id}`;
-            }
-
-            yield {
-              localId: ctx.localId,
-              value: value,
-            };
-          }
-          break;
-        }
-        case 'aboutPlain': {
-          const fieldKey = HNUserFieldMappings.aboutHtml;
-
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-
-            let value = null;
-            if (vertex) {
-              value = extractPlainTextFromHnMarkup(vertex[fieldKey]);
-            }
-
-            yield {
-              localId: ctx.localId,
-              value: value,
-            };
-          }
-          break;
-        }
-        default: {
-          const fieldKey = HNUserFieldMappings[field_name];
-          if (fieldKey == undefined) {
-            throw new Error(`Unexpected property for type ${type_name}: ${field_name}`);
-          }
-
-          for (const ctx of contexts) {
-            const vertex = ctx.activeVertex;
-            yield {
-              localId: ctx.localId,
-              value: vertex?.[fieldKey] || null,
-            };
-          }
-        }
-      }
-    } else if (type_name === 'Webpage') {
-      if (field_name === 'url') {
-        for (const ctx of contexts) {
-          const vertex = ctx.activeVertex;
-          yield {
-            localId: ctx.localId,
-            value: vertex?.url || null,
-          };
-        }
-      } else {
-        throw new Error(`Unexpected property: ${type_name} ${field_name}`);
-      }
+    const fn = vertices[type_name][field_name];
+    if (fn) {
+      yield* fn(contexts);
     } else {
       throw new Error(`Unexpected type+property for type ${type_name}: ${field_name}`);
     }
