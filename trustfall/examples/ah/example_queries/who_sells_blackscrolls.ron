@@ -1,0 +1,16 @@
+InputQuery (
+    query: r#"
+{
+  RecentlySoldItems {
+    item {
+      ... on BlackScroll {
+        blackscroll_percent: success_percent @output @filter(op: "<", value: ["!100"])
+      }
+    }
+    unit_price_pretty @output
+    seller @output
+  }
+}"#,
+  args: {
+  }
+)

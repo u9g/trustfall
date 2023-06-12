@@ -47,7 +47,48 @@ type RootSchemaQuery {
 }
 
 interface CrystalType {
+  type: String!
+}
+
+type MaskType {
+  type: String!
+}
+
+type Duration {
+  # all units are whole numbers
+  hours: Int!
+  minutes: Int!
+  seconds: Int!
+}
+
+type ExecTimeExtender implements Item {
+  duration: Duration!
+
+  # From Item
   name: String!
+  lore: [String!]!
+  item_type: String!
+  nbt: String!
+}
+
+type BlackScroll implements Item {
+  success_percent: Int!
+
+  # From Item
+  name: String!
+  lore: [String!]!
+  item_type: String!
+  nbt: String!
+}
+
+type Mask implements Item {
+  type: [MaskType!]!
+
+  # From Item
+  name: String!
+  lore: [String!]!
+  item_type: String!
+  nbt: String!
 }
 
 type SetCrystal implements Item {
@@ -56,15 +97,37 @@ type SetCrystal implements Item {
   # From Item
   name: String!
   lore: [String!]!
+  item_type: String!
+  nbt: String!
+}
+
+type CosmicCrate implements Item {
+  # crate type, ie: "SAHARA_15"
+  type: String!
+  # username
+  crate_purchased_from_store_by: String!
+
+  # From Item
+  name: String!
+  lore: [String!]!
+  item_type: String!
+  nbt: String!
 }
 
 interface Item {
   name: String!
   lore: [String!]!
+  item_type: String!
+  nbt: String!
 }
 
 interface SoldItem {
   item: Item
   unit_price: Int!
+  # 3,000,000 => 3m
+  unit_price_pretty: String!
   seller: String!
+  buyer: String!
+  amount: Int!
+  item_type: String!
 }

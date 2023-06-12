@@ -1,0 +1,12 @@
+InputQuery (
+    query: r#"
+{
+  RecentlySoldItems {
+    seller @output
+    buyer @output
+    amount @output @filter(op: ">", value: ["!1"])
+  }
+}"#,
+  args: {
+  }
+)

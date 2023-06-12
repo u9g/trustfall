@@ -1,0 +1,19 @@
+InputQuery (
+    query: r#"
+{
+  RecentlySoldItems {
+    item @fold @transform(op: "count") @filter(op: ">", value: ["!0"]) {
+      item_type @output
+                @filter(op: "regex", value: ["$_a"])
+                #@filter(op: "not_regex", value: ["$_b"])
+                #@filter(op: "not_regex", value: ["$_c"])
+                #@filter(op: "not_regex", value: ["$_d"])
+                #@filter(op: "not_regex", value: ["$_e"])
+      nbt @output
+    }
+  }
+}"#,
+  args: {
+    "_a": String("exectimeextender")
+  }
+)

@@ -1,0 +1,17 @@
+InputQuery (
+    query: r#"
+{
+  RecentlySoldItems {
+    item {
+      ... on Mask {
+        type @fold @transform(op: "count") @filter(op: "=", value: ["!3"]) {
+          type @output
+        }
+        name @output
+      }
+    }
+  }
+}"#,
+  args: {
+  }
+)

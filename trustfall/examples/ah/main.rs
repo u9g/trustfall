@@ -17,8 +17,10 @@ mod util;
 pub mod vertex;
 
 lazy_static! {
-    static ref SCHEMA: Schema =
-        Schema::parse(util::read_file("./examples/hackernews/hackernews.graphql")).unwrap();
+    static ref SCHEMA: Schema = Schema::parse(util::read_file(
+        "/home/u9g/code/5-30-23/trustfall/trustfall/examples/ah/ah.graphql"
+    ))
+    .unwrap();
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -33,12 +35,13 @@ fn run_query(path: &str, max_results: Option<usize>) {
     let input_query: InputQuery = ron::from_str(&content).unwrap();
 
     /* */
-    let str = read_to_string("./data.json").expect("to be able to read from file");
+    let str = read_to_string("/home/u9g/code/5-30-23/trustfall/trustfall/examples/ah/data.json")
+        .expect("to be able to read from file");
     let v: Value = serde_json::from_str(&str).expect("to be able to parse json");
     let arr = v.as_array().expect("to be able to parse json");
     /* */
 
-    let adapter = Arc::new(AuctionHouseAdapter::new(&arr));
+    let adapter = Arc::new(AuctionHouseAdapter::new(&arr, &SCHEMA));
 
     let query = input_query.query;
     let arguments = input_query.args;

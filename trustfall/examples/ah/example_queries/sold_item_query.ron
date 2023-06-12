@@ -3,12 +3,7 @@ InputQuery (
 {
   RecentlySoldItems {
     item {
-      ... on SetCrystal {
-        crystal_type @fold {
-          crystals: name @output
-        }
-        item_name: name @output
-      }
+      item_name: name @output
     }
   }
 }"#,

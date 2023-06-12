@@ -1,0 +1,24 @@
+InputQuery (
+    query: r#"
+{
+  RecentlySoldItems {
+    item {
+      item_name: name @output
+                      @filter(op: "regex", value: ["$Booster_name"])
+                      @filter(op: "not_regex", value: ["$_a"])
+                      @filter(op: "not_regex", value: ["$_b"])
+                      @filter(op: "not_regex", value: ["$_c"])
+                      @filter(op: "not_regex", value: ["$_d"])
+                      @filter(op: "not_regex", value: ["$_e"])
+    }
+  }
+}"#,
+    args: {
+        "Booster_name": String("Booster"),
+        "_a": String("Mining XP Booster"),
+        "_b": String("Mystery Energy Booster"),
+        "_c": String("Energy Booster"),
+        "_d": String("Ore Gen Booster"),
+        "_e": String("Badlands XP Booster"),
+    }
+)

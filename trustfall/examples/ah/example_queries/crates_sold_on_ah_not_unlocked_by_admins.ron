@@ -1,0 +1,18 @@
+InputQuery (
+    query: r#"
+{
+  RecentlySoldItems {
+    item {
+      ... on CosmicCrate {
+        type @output
+        crate_purchased_from_store_by @output @filter(op: "!=", value: ["$admin_1"])
+                                              @filter(op: "!=", value: ["$admin_2"])
+      }
+    }
+  }
+}"#,
+    args: {
+      "admin_1": String("XsSlayeR3"),
+      "admin_2": String("Tatorminator88")
+    }
+)

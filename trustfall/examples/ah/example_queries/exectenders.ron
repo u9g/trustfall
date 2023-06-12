@@ -1,0 +1,20 @@
+InputQuery (
+    query: r#"
+{
+  RecentlySoldItems {
+    item {
+      ... on ExecTimeExtender {
+        duration {
+          seconds @output
+          minutes @output
+          hours @output
+        }
+        name @output
+      }
+    }
+    seller @output
+  }
+}"#,
+  args: {
+  }
+)
